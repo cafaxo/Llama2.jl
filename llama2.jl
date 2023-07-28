@@ -263,9 +263,13 @@ function main(
 
     # read in the tokenizer.bin file
     vocab = Vector{Vector{UInt8}}(undef, config.vocab_size)
+    vocab_scores = Vector{Float32}(undef, config.vocab_size)
+    max_token_length = 1
 
     open(tokenizer_filename) do file
+        max_token_length = read(file, Int32)
         for i in 1:config.vocab_size
+            vocab_scores[i] = read(file, Float32)
             len = read(file, Int32)
             vocab[i] = read(file, len)
         end
