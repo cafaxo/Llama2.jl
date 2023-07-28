@@ -245,10 +245,63 @@ end
     return nothing
 end
 
+function str_lookup(str::Vector{UInt8}, vocab::Vector{Vector{UInt8}}, vocab_size::Int)::Int
+    for i in 1:vocab_size
+        if str == vocab[i]
+            return i
+        end
+    end
+    return -1
+end
+
+function bpe_encode(text::String, vocab::Vector{Vector{UInt8}}, vocab_scores::Vector{Float32}, vocab_size::Int, tokens::Vector{Int})
+    n_tokens = 0
+    for c in text
+        str_buffer = Vector{UInt8}(string(c))
+        id = str_lookup(str_buffer, vocab, vocab_size)
+        if id == -1
+            println("not good")
+            exit(1)
+        end
+        n_tokens += 1
+        tokens[n_tokens] = id
+    end
+
+    while true
+        best_score = -1e10
+        best_id = -1
+        best_idx = -1
+
+        for i in 1:n_tokens-1
+            # check if we can merge the pair (tokens[i], tokens[i+1])
+            str_buffer = [vocab[tokens[i]]; vocab[tokens[i+1]]]
+            id = str_lookup(str_buffer, vocab, vocab_size)
+            if id != -1 && vocab_scores[id] > best_score
+                best_score = vocab_scores[id]
+                best_id = id
+                best_idx = i
+            end
+        end
+
+        best_idx == -1 && break # we couldn't find any more pairs to merge, so we're done
+
+        # merge the consecutive pair (best_idx, best_idx+1) into new token best_id
+        tokens[best_idx] = best_id
+        # delete token at position best_idx+1, shift the entire sequence back 1
+        for i in best_idx+1:n_tokens-1
+            tokens[i] = tokens[i+1]
+        end
+        n_tokens -= 1
+    end
+
+    return n_tokens
+end
+
 function main(
         checkpoint_filename::AbstractString,
         tokenizer_filename::AbstractString;
         temperature::Float32 = 0.9f0,
+        prompt::AbstractString = "",
     )
 
     config = nothing
@@ -278,6 +331,12 @@ function main(
     # create and init the application RunState
     state = RunState(config)
 
+    prompt_tokens = zeros(Int, config.seq_len)
+    num_prompt_tokens = 0
+    if length(prompt) != 0
+        num_prompt_tokens = bpe_encode(prompt, vocab, vocab_scores, config.vocab_size, prompt_tokens)
+    end
+
     # the current position we are in
     time_start = time_ns()
 
@@ -288,16 +347,21 @@ function main(
         transformer!(token, pos, config, state, weights)
 
         # sample the next token
-        if temperature == 0f0
-            # greedy argmax sampling
-            next = argmax(state.logits)
+        if pos <= num_prompt_tokens
+            next = prompt_tokens[pos]
         else
-            # apply the temperature to the logits
-            state.logits ./= temperature
-            # apply softmax to the logits to get the probabilities for next token
-            softmax!(state.logits)
-            # we now want to sample from this distribution to get the next token
-            next = wsample(1:config.vocab_size, state.logits)
+            # sample the next token
+            if temperature == 0.0f0
+                # greedy argmax sampling
+                next = argmax(state.logits)
+            else
+                # apply the temperature to the logits
+                state.logits ./= temperature
+                # apply softmax to the logits to get the probabilities for next token
+                softmax!(state.logits)
+                # we now want to sample from this distribution to get the next token
+                next = wsample(1:config.vocab_size, state.logits)
+            end
         end
 
         print(String(copy(vocab[next])))
