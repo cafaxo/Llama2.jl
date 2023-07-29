@@ -1,5 +1,3 @@
-# Transformer and RunState structs, and related memory management
-
 struct Config
     dim::Int        # transformer dimension
     hidden_dim::Int # for ffn layers
@@ -21,25 +19,24 @@ read_config(f::IOStream) = Config(
 )
 
 @kwdef struct TransformerWeights
-    # token embedding table
-    token_embedding_table::Matrix{Float32} # (vocab_size, dim)
+    token_embedding_table::Matrix{Float32} # (dim, vocab_size)
     # weights for rmsnorms
-    rms_att_weight::Matrix{Float32} # (layer, dim) rmsnorm weights
-    rms_ffn_weight::Matrix{Float32} # (layer, dim)
+    rms_att_weight::Matrix{Float32} # (dim, layer)
+    rms_ffn_weight::Matrix{Float32} # (dim, layer)
     # weights for matmuls
-    wq::Array{Float32,3} # (layer, dim, dim)
-    wk::Array{Float32,3} # (layer, dim, dim)
-    wv::Array{Float32,3} # (layer, dim, dim)
-    wo::Array{Float32,3} # (layer, dim, dim)
+    wq::Array{Float32,3} # (dim, dim, layer)
+    wk::Array{Float32,3} # (dim, dim, layer)
+    wv::Array{Float32,3} # (dim, dim, layer)
+    wo::Array{Float32,3} # (dim, dim, layer)
     # weights for ffn
-    w1::Array{Float32,3} # (layer, hidden_dim, dim)
-    w2::Array{Float32,3} # (layer, dim, hidden_dim)
-    w3::Array{Float32,3} # (layer, hidden_dim, dim)
+    w1::Array{Float32,3} # (dim, hidden_dim, layer)
+    w2::Array{Float32,3} # (hidden_dim, dim, layer)
+    w3::Array{Float32,3} # (dim, hidden_dim, layer)
     # final rmsnorm
     rms_final_weight::Vector{Float32} # (dim,)
-    # freq_cis for RoPE relatively positional embeddings
-    freq_cis_real::Matrix{Float32} # (seq_len, dim/2)
-    freq_cis_imag::Matrix{Float32} # (seq_len, dim/2)
+    # freq_cis for RoPE relative positional embeddings
+    freq_cis_real::Matrix{Float32} # ((dim / n_heads) / 2, seq_len)
+    freq_cis_imag::Matrix{Float32} # ((dim / n_heads) / 2, seq_len)
 end
 
 TransformerWeights(p::Config) = TransformerWeights(;
@@ -88,8 +85,8 @@ end
     att::Vector{Float32}    # buffer for scores/attention values (seq_len,)
     logits::Vector{Float32} # output logits
     # kv cache
-    key_cache::Array{Float32,3}   # (layer, seq_len, dim)
-    value_cache::Array{Float32,3} # (layer, seq_len, dim)
+    key_cache::Array{Float32,3}   # (dim, seq_len, layer)
+    value_cache::Array{Float32,3} # (dim, seq_len, layer)
 end
 
 RunState(p::Config) = RunState(;
@@ -108,7 +105,6 @@ RunState(p::Config) = RunState(;
 )
 
 function rmsnorm!(o, x, weight)
-    # calculate sum of squares
     ss = dot(x, x)
     ss /= length(x)
     ss += 1f-5
@@ -119,10 +115,7 @@ function rmsnorm!(o, x, weight)
 end
 
 function softmax!(x)
-    # find max value (for numerical stability)
-    max_val = maximum(x)
-    # exp
-    x .= exp.(x .- max_val)
+    x .= exp.(x .- maximum(x))
     # normalize
     x ./= sum(x)
     return nothing
@@ -268,10 +261,8 @@ function sample(
         end
     end
 
-    # create and init the application RunState
     state = RunState(config)
 
-    # the current position we are in
     time_start = time_ns()
 
     token = 1 # 1 = BOS token in Llama-2 sentencepiece
@@ -289,7 +280,7 @@ function sample(
             state.logits ./= temperature
             # apply softmax to the logits to get the probabilities for next token
             softmax!(state.logits)
-            # we now want to sample from this distribution to get the next token
+            # sample from this distribution to get the next token
             next = wsample(1:config.vocab_size, state.logits)
         end
 
