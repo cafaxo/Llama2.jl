@@ -1,10 +1,3 @@
-# this file contains a Julia port of https://github.com/karpathy/llama2.c
-# all credit goes to Andrej Karpathy (author of llama2.c)
-
-using LinearAlgebra
-using StatsBase
-using Printf
-
 # Transformer and RunState structs, and related memory management
 
 struct Config
@@ -245,7 +238,7 @@ end
     return nothing
 end
 
-function main(
+function sample(
         checkpoint_filename::AbstractString,
         tokenizer_filename::AbstractString;
         temperature::Float32 = 0.9f0,
