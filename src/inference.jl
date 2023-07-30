@@ -297,7 +297,7 @@ function sample(
             end
         end
 
-        print(String(copy(tokenizer.vocab[next])))
+        print(tokenizer.vocab[next])
 
         # advance forward
         token = next

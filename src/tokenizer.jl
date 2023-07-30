@@ -1,10 +1,10 @@
 struct Tokenizer
-    vocab::Vector{Vector{UInt8}}
+    vocab::Vector{String}
     vocab_scores::Vector{Float32}
 end
 
 function load_tokenizer(filename::AbstractString, vocab_size::Int)
-    vocab = Vector{Vector{UInt8}}(undef, vocab_size)
+    vocab = Vector{String}(undef, vocab_size)
     vocab_scores = Vector{Float32}(undef, vocab_size)
 
     open(filename) do file
@@ -12,7 +12,7 @@ function load_tokenizer(filename::AbstractString, vocab_size::Int)
         for i in 1:vocab_size
             vocab_scores[i] = read(file, Float32)
             len = read(file, Int32)
-            vocab[i] = read(file, len)
+            vocab[i] = String(read(file, len))
         end
     end
 
@@ -24,7 +24,7 @@ function bpe_encode(text::AbstractString, tokenizer::Tokenizer)
 
     # encode every individual char in the input string
     # this throws if the char is not in vocab
-    tokens = Int[findfirst(==(char), vocab) for char in ByteViewIterator(text)]
+    tokens = Int[findfirst(str -> length(str) == 1 && str[1] == char, vocab) for char in text]
 
     # a temporary buffer to merge two consecutive tokens
     str_buffer = UInt8[]
@@ -37,10 +37,10 @@ function bpe_encode(text::AbstractString, tokenizer::Tokenizer)
         for i in 1:(length(tokens) - 1)
             # check if we can merge the pair (tokens[i], tokens[i+1])
             empty!(str_buffer)
-            append!(str_buffer, vocab[tokens[i]])
-            append!(str_buffer, vocab[tokens[i+1]])
+            append!(str_buffer, codeunits(vocab[tokens[i]]))
+            append!(str_buffer, codeunits(vocab[tokens[i+1]]))
 
-            id = findfirst(==(str_buffer), vocab)
+            id = findfirst(str -> codeunits(str) == str_buffer, vocab)
 
             if !isnothing(id) && vocab_scores[id] > best_score
                 best_score = vocab_scores[id]
