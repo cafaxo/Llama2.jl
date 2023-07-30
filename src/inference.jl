@@ -233,7 +233,8 @@ end
 
 function sample(
         checkpoint_filename::AbstractString,
-        tokenizer_filename::AbstractString;
+        tokenizer_filename::AbstractString,
+        prompt::String = "";
         temperature::Float32 = 0.9f0,
     )
 
@@ -248,18 +249,9 @@ function sample(
     end
 
     # read in the tokenizer.bin file
-    vocab = Vector{Vector{UInt8}}(undef, config.vocab_size)
-    vocab_scores = Vector{Float32}(undef, config.vocab_size)
-    max_token_length = 1
+    tokenizer = load_tokenizer(tokenizer_filename, config.vocab_size)
+    prompt_tokens = bpe_encode(prompt, tokenizer)
 
-    open(tokenizer_filename) do file
-        max_token_length = read(file, Int32)
-        for i in 1:config.vocab_size
-            vocab_scores[i] = read(file, Float32)
-            len = read(file, Int32)
-            vocab[i] = read(file, len)
-        end
-    end
 
     state = RunState(config)
 
@@ -267,29 +259,36 @@ function sample(
 
     token = 1 # 1 = BOS token in Llama-2 sentencepiece
 
+    println("<s>")
+
     for pos in 1:config.seq_len
         # forward the transformer to get logits for the next token
         transformer!(token, pos, config, state, weights)
 
-        # sample the next token
-        if temperature == 0f0
-            # greedy argmax sampling
-            next = argmax(state.logits)
+        if pos <= length(prompt_tokens)
+            next = prompt_tokens[pos]
         else
-            # apply the temperature to the logits
-            state.logits ./= temperature
-            # apply softmax to the logits to get the probabilities for next token
-            softmax!(state.logits)
-            # sample from this distribution to get the next token
-            next = wsample(1:config.vocab_size, state.logits)
+            # sample the next token
+            if temperature == 0f0
+                # greedy argmax sampling
+                next = argmax(state.logits)
+            else
+                # apply the temperature to the logits
+                state.logits ./= temperature
+                # apply softmax to the logits to get the probabilities for next token
+                softmax!(state.logits)
+                # sample from this distribution to get the next token
+                next = wsample(1:config.vocab_size, state.logits)
+            end
         end
 
-        print(String(copy(vocab[next])))
+        print(String(copy(tokenizer.vocab[next])))
 
         # advance forward
         token = next
     end
-    print('\n')
+
+    println()
 
     # report our achieved tok/s
     time_end = time_ns()
