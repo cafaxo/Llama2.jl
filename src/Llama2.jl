@@ -4,7 +4,7 @@ using LinearAlgebra
 using StatsBase
 using Printf
 
-export sample
+export load_model, sample
 
 include("utils.jl")
 include("tokenizer.jl")

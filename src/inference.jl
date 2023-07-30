@@ -231,11 +231,15 @@ end
     return nothing
 end
 
-function sample(
+struct LanguageModel
+    config::Config
+    weights::TransformerWeights
+    tokenizer::Tokenizer
+end
+
+function load_model(
         checkpoint_filename::AbstractString,
         tokenizer_filename::AbstractString,
-        prompt::String = "";
-        temperature::Float32 = 0.9f0,
     )
 
     config = nothing
@@ -250,8 +254,19 @@ function sample(
 
     # read in the tokenizer.bin file
     tokenizer = load_tokenizer(tokenizer_filename, config.vocab_size)
-    prompt_tokens = bpe_encode(prompt, tokenizer)
 
+    return LanguageModel(config, weights, tokenizer)
+end
+
+function sample(
+        model::LanguageModel,
+        prompt::String = "";
+        temperature::Float32 = 0.9f0,
+    )
+
+    (; config, weights, tokenizer) = model
+
+    prompt_tokens = bpe_encode(prompt, tokenizer)
 
     state = RunState(config)
 

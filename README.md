@@ -21,7 +21,9 @@ The model can be sampled with
 ```
 julia> using Llama2
 
-julia> sample("stories42M.bin", "tokenizer.bin")
+julia> model = load_model("stories42M.bin", "tokenizer.bin");
+
+julia> sample(model)
 <s>
  Once upon a time, there was a little boy named Timmy.
 [...]
@@ -30,7 +32,7 @@ julia> sample("stories42M.bin", "tokenizer.bin")
 Prompts are supported:
 
 ```
-julia> sample("stories42M.bin", "tokenizer.bin", "Julia is the best"; temperature = 0.5f0)
+julia> sample(model, "Julia is the best"; temperature = 0.5f0)
 <s>
 Julia is the best. She has to do what I say. She is not happy.
 [...]
