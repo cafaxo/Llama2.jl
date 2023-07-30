@@ -22,4 +22,16 @@ The model can be sampled with
 julia> using Llama2
 
 julia> sample("stories42M.bin", "tokenizer.bin")
+<s>
+ Once upon a time, there was a little boy named Timmy.
+[...]
+```
+
+Prompts are supported:
+
+```
+julia> sample("stories42M.bin", "tokenizer.bin", "Julia is the best"; temperature = 0.5f0)
+<s>
+Julia is the best. She has to do what I say. She is not happy.
+[...]
 ```
