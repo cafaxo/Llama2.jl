@@ -23,3 +23,12 @@ julia> using Llama2
 
 julia> sample("stories42M.bin", "tokenizer.bin")
 ```
+
+Alternatively, you can load the model and tokenizer into memory and sample repeatedly from it with different prompts:   
+```
+julia> using Llama2
+
+julia> model = load_model("stories42M.bin", "tokenizer.bin")
+
+julia> sample(model, "Julia is the best"; temperature = 0.5f0)
+```
