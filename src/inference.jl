@@ -257,7 +257,7 @@ function sample(
 
     time_start = time_ns()
 
-    token = 1 # 1 = BOS token in Llama-2 sentencepiece
+    token = 2 # BOS token in Llama-2 sentencepiece
 
     println("<s>")
 
