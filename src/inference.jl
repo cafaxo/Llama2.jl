@@ -148,6 +148,11 @@ end
     # copy the token embedding into x
     dequantize!(x, weights.token_embedding_table[:, token])
 
+    # 2-d views into q, k, xb 
+    q = reshape(s.q, head_size, n_heads)
+    k = reshape(s.k, head_size, n_heads)
+    xb = reshape(s.xb, head_size, n_heads)
+
     # forward all the layers
     for l in 1:n_layers
         w = weights.layers[l]
@@ -161,9 +166,6 @@ end
         matmul!(s.k, w.wk, s.xb)
         matmul!(s.v, w.wv, s.xb)
 
-        q = reshape(s.q, head_size, n_heads)
-        k = reshape(s.k, head_size, n_heads)
-
         # apply RoPE rotation to the q and k vectors for each head
         rope!(q, pos)
         rope!(k, pos)
@@ -176,20 +178,13 @@ end
         for h in 1:n_heads
             # get the query vector for this head
             q_h = q[:, h]
-            # iterate over all timesteps, including the current one
-            for t in 1:pos
-                # get the key vector for this head and at this timestep
-                k_h = kv.key_cache[:, h, t]
-                # calculate the attention score as the dot product of q and k
-                score = dot(q_h, k_h) / sqrt(Float32(head_size))
-                # save the score to the attention buffer
-                s.att[t] = score
-            end
+            # iterate over all timesteps, including the current one, calculate the attention score
+            mul!(s.att[1:pos], kv.key_cache[:,h,1:pos]', q_h)
+
+            s.att[1:pos] ./= sqrt(Float32(head_size))
 
             # softmax the scores to get attention weights, from 0..pos inclusively
             softmax!(s.att[1:pos])
-
-            xb = reshape(s.xb, head_size, n_heads)
 
             # weighted sum of the values, store back into xb
             mul!(xb[:, h], kv.value_cache[:, h, 1:pos], s.att[1:pos])
