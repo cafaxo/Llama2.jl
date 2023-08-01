@@ -1,4 +1,4 @@
-struct Config
+@kwdef struct ModelConfig
     dim::Int        # transformer dimension
     hidden_dim::Int # for ffn layers
     n_layers::Int   # number of layers
@@ -8,69 +8,62 @@ struct Config
     seq_len::Int    # max sequence length
 end
 
-read_config(f::IOStream) = Config(
-    read(f, Int32),
-    read(f, Int32),
-    read(f, Int32),
-    read(f, Int32),
-    read(f, Int32),
-    read(f, Int32),
-    read(f, Int32),
-)
+function Base.show(io::IO, mime::MIME"text/plain", config::ModelConfig)
+    println(io, "ModelConfig(")
+    println(io, "  dim         = ", config.dim, ",")
+    println(io, "  hidden_dim  = ", config.hidden_dim, ",")
+    println(io, "  n_layers    = ", config.n_layers, ",")
+    println(io, "  n_heads     = ", config.n_heads, ",")
+    println(io, "  n_kv_heads  = ", config.n_kv_heads, ",")
+    println(io, "  vocab_size  = ", config.vocab_size, ",")
+    println(io, "  seq_len     = ", config.seq_len, ",")
+    print(io, ")")
+end
 
-@kwdef struct TransformerWeights
-    token_embedding_table::Matrix{Float32} # (dim, vocab_size)
+@kwdef struct TransformerLayerWeights{Q}
     # weights for rmsnorms
-    rms_att_weight::Matrix{Float32} # (dim, layer)
-    rms_ffn_weight::Matrix{Float32} # (dim, layer)
+    rms_att_weight::Vector{Float32} # (dim,)
+    rms_ffn_weight::Vector{Float32} # (dim,)
     # weights for matmuls
-    wq::Array{Float32,3} # (dim, dim, layer)
-    wk::Array{Float32,3} # (dim, dim, layer)
-    wv::Array{Float32,3} # (dim, dim, layer)
-    wo::Array{Float32,3} # (dim, dim, layer)
+    wq::Matrix{Q} # (dim, dim)
+    wk::Matrix{Q} # (dim, dim)
+    wv::Matrix{Q} # (dim, dim)
+    wo::Matrix{Q} # (dim, dim)
     # weights for ffn
-    w1::Array{Float32,3} # (dim, hidden_dim, layer)
-    w2::Array{Float32,3} # (hidden_dim, dim, layer)
-    w3::Array{Float32,3} # (dim, hidden_dim, layer)
+    w1::Matrix{Q} # (dim, hidden_dim)
+    w2::Matrix{Q} # (hidden_dim, dim)
+    w3::Matrix{Q} # (dim, hidden_dim)
+end
+
+@kwdef struct TransformerWeights{Q,OW}
+    token_embedding_table::Matrix{Q} # (dim, vocab_size)
+    layers::Vector{TransformerLayerWeights{Q}}
     # final rmsnorm
     rms_final_weight::Vector{Float32} # (dim,)
-    # freq_cis for RoPE relative positional embeddings
-    freq_cis_real::Matrix{Float32} # ((dim / n_heads) / 2, seq_len)
-    freq_cis_imag::Matrix{Float32} # ((dim / n_heads) / 2, seq_len)
+    output_weight::Matrix{OW} # (dim, vocab_size)
 end
 
-TransformerWeights(p::Config) = TransformerWeights(;
-    token_embedding_table = zeros(Float32, p.dim, p.vocab_size),
-    rms_att_weight        = zeros(Float32, p.dim, p.n_layers),
-    rms_ffn_weight        = zeros(Float32, p.dim, p.n_layers),
-    wq                    = zeros(Float32, p.dim, p.dim, p.n_layers),
-    wk                    = zeros(Float32, p.dim, p.dim, p.n_layers),
-    wv                    = zeros(Float32, p.dim, p.dim, p.n_layers),
-    wo                    = zeros(Float32, p.dim, p.dim, p.n_layers),
-    w1                    = zeros(Float32, p.dim, p.hidden_dim, p.n_layers),
-    w2                    = zeros(Float32, p.hidden_dim, p.dim, p.n_layers),
-    w3                    = zeros(Float32, p.dim, p.hidden_dim, p.n_layers),
-    rms_final_weight      = zeros(Float32, p.dim),
-    freq_cis_real         = zeros(Float32, (p.dim ÷ p.n_heads) ÷ 2, p.seq_len),
-    freq_cis_imag         = zeros(Float32, (p.dim ÷ p.n_heads) ÷ 2, p.seq_len),
+struct LanguageModel{TW<:TransformerWeights}
+    config::ModelConfig
+    tokenizer::Tokenizer
+    weights::TW
+end
+
+function Base.show(io::IO, mime::MIME"text/plain", model::LanguageModel)
+    println(io, "LanguageModel(")
+    show(io, mime, model.config)
+    print(io, ")")
+end
+
+struct KVCache
+    key_cache::Array{Float32,3}   # (head_size, n_heads, seq_len)
+    value_cache::Array{Float32,3} # (head_size, n_heads, seq_len)
+end
+
+KVCache(head_size::Int, n_heads::Int, seq_len::Int) = KVCache(
+    zeros(Float32, head_size, n_heads, seq_len),
+    zeros(Float32, head_size, n_heads, seq_len),
 )
-
-function checkpoint_init_weights!(w::TransformerWeights, f::IOStream)
-    read!(f, w.token_embedding_table)
-    read!(f, w.rms_att_weight)
-    read!(f, w.wq)
-    read!(f, w.wk)
-    read!(f, w.wv)
-    read!(f, w.wo)
-    read!(f, w.rms_ffn_weight)
-    read!(f, w.w1)
-    read!(f, w.w2)
-    read!(f, w.w3)
-    read!(f, w.rms_final_weight)
-    read!(f, w.freq_cis_real)
-    read!(f, w.freq_cis_imag)
-    return nothing
-end
 
 @kwdef struct RunState
     # current wave of activations
@@ -85,23 +78,21 @@ end
     att::Vector{Float32}    # buffer for scores/attention values (seq_len,)
     logits::Vector{Float32} # output logits
     # kv cache
-    key_cache::Array{Float32,3}   # (dim, seq_len, layer)
-    value_cache::Array{Float32,3} # (dim, seq_len, layer)
+    kvcache_layers::Vector{KVCache}
 end
 
-RunState(p::Config) = RunState(;
-    x           = zeros(Float32, p.dim),
-    xb          = zeros(Float32, p.dim),
-    xb2         = zeros(Float32, p.dim),
-    hb          = zeros(Float32, p.hidden_dim),
-    hb2         = zeros(Float32, p.hidden_dim),
-    q           = zeros(Float32, p.dim),
-    k           = zeros(Float32, p.dim),
-    v           = zeros(Float32, p.dim),
-    att         = zeros(Float32, p.seq_len),
-    logits      = zeros(Float32, p.vocab_size),
-    key_cache   = zeros(Float32, p.dim, p.seq_len, p.n_layers),
-    value_cache = zeros(Float32, p.dim, p.seq_len, p.n_layers),
+RunState(c::ModelConfig) = RunState(;
+    x              = zeros(Float32, c.dim),
+    xb             = zeros(Float32, c.dim),
+    xb2            = zeros(Float32, c.dim),
+    hb             = zeros(Float32, c.hidden_dim),
+    hb2            = zeros(Float32, c.hidden_dim),
+    q              = zeros(Float32, c.dim),
+    k              = zeros(Float32, c.dim),
+    v              = zeros(Float32, c.dim),
+    att            = zeros(Float32, c.seq_len),
+    logits         = zeros(Float32, c.vocab_size),
+    kvcache_layers = [KVCache(c.dim ÷ c.n_heads, c.n_heads, c.seq_len) for _ in 1:c.n_layers],
 )
 
 function rmsnorm!(o, x, weight)
@@ -114,6 +105,27 @@ function rmsnorm!(o, x, weight)
     return nothing
 end
 
+function rope!(x::AbstractMatrix{Float32}, pos::Int)
+    x = reinterpret(ComplexF32, x)
+    head_size_div2, n_heads = size(x)
+
+    freq_base = 10000.0f0
+    freq_scale = 1.0f0
+
+    theta_scale = freq_base ^ (-inv(Float32(head_size_div2)))
+
+    @inbounds for head in 1:n_heads
+        theta = freq_scale * (pos - 1)
+
+        for i in 1:head_size_div2
+            x[i, head] *= cis(theta)
+            theta *= theta_scale
+        end
+    end
+
+    return nothing
+end
+
 function softmax!(x)
     x .= exp.(x .- maximum(x))
     # normalize
@@ -121,64 +133,55 @@ function softmax!(x)
     return nothing
 end
 
-@views function transformer!(token::Int, pos::Int, p::Config, s::RunState, w::TransformerWeights)
-    # a few convenience variables
+@views function transformer!(token::Int, pos::Int, config::ModelConfig, s::RunState, weights::TransformerWeights)
     x = s.x
-    dim = p.dim
-    hidden_dim = p.hidden_dim
-    head_size = dim ÷ p.n_heads
+
+    (;
+        dim,
+        hidden_dim,
+        n_layers,
+        n_heads,
+    ) = config
+
+    head_size = dim ÷ n_heads
 
     # copy the token embedding into x
-    copyto!(x, w.token_embedding_table[:, token])
-
-    # pluck out the "pos" row of freq_cis_real and freq_cis_imag
-    freq_cis_real_row = w.freq_cis_real[:, pos]
-    freq_cis_imag_row = w.freq_cis_imag[:, pos]
+    dequantize!(x, weights.token_embedding_table[:, token])
 
     # forward all the layers
-    for l in 1:p.n_layers
+    for l in 1:n_layers
+        w = weights.layers[l]
+        kv = s.kvcache_layers[l]
+
         # attention rmsnorm
-        rmsnorm!(s.xb, x, w.rms_att_weight[:, l])
+        rmsnorm!(s.xb, x, w.rms_att_weight)
 
         # qkv matmuls for this position
-        mul!(s.q, w.wq[:, :, l]', s.xb)
-        mul!(s.k, w.wk[:, :, l]', s.xb)
-        mul!(s.v, w.wv[:, :, l]', s.xb)
+        matmul!(s.q, w.wq, s.xb)
+        matmul!(s.k, w.wk, s.xb)
+        matmul!(s.v, w.wv, s.xb)
+
+        q = reshape(s.q, head_size, n_heads)
+        k = reshape(s.k, head_size, n_heads)
 
         # apply RoPE rotation to the q and k vectors for each head
-        for h in 1:p.n_heads
-            # get the q and k vectors for this head
-            q = s.q[((h-1) * head_size + 1):(h * head_size)]
-            k = s.k[((h-1) * head_size + 1):(h * head_size)]
-            # rotate q and k by the freq_cis_real and freq_cis_imag
-            for i in 1:(head_size ÷ 2)
-                q0 = q[2*i-1]
-                q1 = q[2*i]
-                k0 = k[2*i-1]
-                k1 = k[2*i]
-                fcr = freq_cis_real_row[i]
-                fci = freq_cis_imag_row[i]
-                q[2*i-1] = q0 * fcr - q1 * fci
-                q[2*i]   = q0 * fci + q1 * fcr
-                k[2*i-1] = k0 * fcr - k1 * fci
-                k[2*i]   = k0 * fci + k1 * fcr
-            end
-        end
+        rope!(q, pos)
+        rope!(k, pos)
 
         # save key,value at this time step (pos) to our kv cache
-        copyto!(s.key_cache[:, pos, l], s.k)
-        copyto!(s.value_cache[:, pos, l], s.v)
+        copyto!(kv.key_cache[:, :, pos], s.k)
+        copyto!(kv.value_cache[:, :, pos], s.v)
 
         # multihead attention. iterate over all heads
-        for h in 1:p.n_heads
+        for h in 1:n_heads
             # get the query vector for this head
-            q = s.q[((h-1) * head_size + 1):(h * head_size)]
+            q_h = q[:, h]
             # iterate over all timesteps, including the current one
             for t in 1:pos
                 # get the key vector for this head and at this timestep
-                k = s.key_cache[((h-1) * head_size + 1):(h * head_size), t, l]
+                k_h = kv.key_cache[:, h, t]
                 # calculate the attention score as the dot product of q and k
-                score = dot(q, k) / sqrt(Float32(head_size))
+                score = dot(q_h, k_h) / sqrt(Float32(head_size))
                 # save the score to the attention buffer
                 s.att[t] = score
             end
@@ -186,27 +189,25 @@ end
             # softmax the scores to get attention weights, from 0..pos inclusively
             softmax!(s.att[1:pos])
 
+            xb = reshape(s.xb, head_size, n_heads)
+
             # weighted sum of the values, store back into xb
-            mul!(
-                s.xb[((h-1) * head_size + 1):(h * head_size)],
-                s.value_cache[((h-1) * head_size + 1):(h * head_size), 1:pos, l],
-                s.att[1:pos],
-            )
+            mul!(xb[:, h], kv.value_cache[:, h, 1:pos], s.att[1:pos])
         end
 
         # final matmul to get the output of the attention
-        mul!(s.xb2, w.wo[:, :, l]', s.xb)
+        matmul!(s.xb2, w.wo, s.xb)
 
         # residual connection back into x
         x .+= s.xb2
 
         # ffn rmsnorm
-        rmsnorm!(s.xb, x, w.rms_ffn_weight[:, l])
+        rmsnorm!(s.xb, x, w.rms_ffn_weight)
 
         # Now for FFN in PyTorch we have: self.w2(F.silu(self.w1(x)) * self.w3(x))
         # first calculate self.w1(x) and self.w3(x)
-        mul!(s.hb, w.w1[:, :, l]', s.xb)
-        mul!(s.hb2, w.w3[:, :, l]', s.xb)
+        matmul!(s.hb, w.w1, s.xb)
+        matmul!(s.hb2, w.w3, s.xb)
 
         # F.silu silu(x)=x*σ(x),where σ(x) is the logistic sigmoid
         for i in 1:hidden_dim
@@ -216,46 +217,19 @@ end
         s.hb .*= s.hb2
 
         # final matmul to get the output of the ffn
-        mul!(s.xb, w.w2[:, :, l]', s.hb)
+        matmul!(s.xb, w.w2, s.hb)
 
         # residual connection
         x .+= s.xb
     end
 
     # final rmsnorm
-    rmsnorm!(x, x, w.rms_final_weight)
+    rmsnorm!(x, x, weights.rms_final_weight)
 
     # classifier into logits
-    mul!(s.logits, w.token_embedding_table', x)
+    matmul!(s.logits, weights.output_weight, x)
 
     return nothing
-end
-
-struct LanguageModel
-    config::Config
-    weights::TransformerWeights
-    tokenizer::Tokenizer
-end
-
-function load_model(
-        checkpoint_filename::AbstractString,
-        tokenizer_filename::AbstractString,
-    )
-
-    config = nothing
-    weights = nothing
-
-    # read in the model.bin file
-    open(checkpoint_filename) do file
-        config = read_config(file)
-        weights = TransformerWeights(config)
-        checkpoint_init_weights!(weights, file)
-    end
-
-    # read in the tokenizer.bin file
-    tokenizer = load_tokenizer(tokenizer_filename, config.vocab_size)
-
-    return LanguageModel(config, weights, tokenizer)
 end
 
 function sample(

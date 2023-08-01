@@ -3,22 +3,6 @@ struct Tokenizer
     vocab_scores::Vector{Float32}
 end
 
-function load_tokenizer(filename::AbstractString, vocab_size::Int)
-    vocab = Vector{String}(undef, vocab_size)
-    vocab_scores = Vector{Float32}(undef, vocab_size)
-
-    open(filename) do file
-        max_token_length = read(file, Int32)
-        for i in 1:vocab_size
-            vocab_scores[i] = read(file, Float32)
-            len = read(file, Int32)
-            vocab[i] = String(read(file, len))
-        end
-    end
-
-    return Tokenizer(vocab, vocab_scores)
-end
-
 function bpe_encode(text::AbstractString, tokenizer::Tokenizer)
     (; vocab, vocab_scores) = tokenizer
 
