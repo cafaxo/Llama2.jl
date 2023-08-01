@@ -35,6 +35,7 @@ Julia is the best. She has to do what I say. She is not happy.
 ```
 
 Here is a demo of a Llama2 7B model from https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGML:
+
 **Only the q4_K_S variant is supported.**
 
 ```
