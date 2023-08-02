@@ -33,7 +33,7 @@ end
 
 function read_ggml_tokenizer(file::IOStream, n_vocab::Int)
     id_to_token = Vector{String}(undef, n_vocab)
-    # token_to_id = Dict{String,Int}()
+    token_to_id = Dict{String,Int}()
     token_scores = Vector{Float32}(undef, n_vocab)
 
     for i in 1:n_vocab
@@ -45,10 +45,10 @@ function read_ggml_tokenizer(file::IOStream, n_vocab::Int)
         id_to_token[i] = word
         token_scores[i] = score
 
-        # token_to_id[word] = i
+        token_to_id[word] = i
     end
 
-    return Tokenizer(id_to_token, token_scores)
+    return Tokenizer(id_to_token, token_to_id, token_scores)
 end
 
 function read_ggml_tensor(tensor_type::GGML_TYPE, size::Tuple, file::IOStream)

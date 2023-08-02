@@ -271,7 +271,7 @@ function sample(
             end
         end
 
-        print(tokenizer.vocab[next])
+        print(tokenizer.id_to_token[next])
 
         # advance forward
         token = next

@@ -57,19 +57,22 @@ function read_karpathy_weights(f::IOStream, config::ModelConfig)
 end
 
 function load_karpathy_tokenizer(filename::AbstractString, vocab_size::Int)
-    vocab = Vector{String}(undef, vocab_size)
-    vocab_scores = Vector{Float32}(undef, vocab_size)
+    id_to_token = Vector{String}(undef, vocab_size)
+    token_to_id = Dict{String,Int}()
+    token_scores = Vector{Float32}(undef, vocab_size)
 
     open(filename) do file
         max_token_length = read(file, Int32)
         for i in 1:vocab_size
-            vocab_scores[i] = read(file, Float32)
+            token_scores[i] = read(file, Float32)
             len = read(file, Int32)
-            vocab[i] = String(read(file, len))
+            word = String(read(file, len))
+            id_to_token[i] = word
+            token_to_id[word] = i
         end
     end
 
-    return Tokenizer(vocab, vocab_scores)
+    return Tokenizer(id_to_token, token_to_id, token_scores)
 end
 
 function load_karpathy_model(

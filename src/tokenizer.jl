@@ -1,17 +1,26 @@
 struct Tokenizer
-    vocab::Vector{String}
-    vocab_scores::Vector{Float32}
+    id_to_token::Vector{String}
+    token_to_id::Dict{String,Int}
+    token_scores::Vector{Float32}
 end
 
-function bpe_encode(text::AbstractString, tokenizer::Tokenizer)
-    (; vocab, vocab_scores) = tokenizer
+function bpe_encode(text::AbstractString, tokenizer::Tokenizer; pad_input=true)
+    (; id_to_token, token_to_id, token_scores) = tokenizer
+
+    tokens = Int[]
+
+    if isempty(text)
+        return tokens
+    end
+
+    if pad_input
+        push!(tokens, token_to_id[" "])
+    end
 
     # encode every individual char in the input string
-    # this throws if the char is not in vocab
-    tokens = Int[findfirst(str -> length(str) == 1 && str[1] == char, vocab) for char in text]
-
-    # a temporary buffer to merge two consecutive tokens
-    str_buffer = UInt8[]
+    for char in text
+        push!(tokens, token_to_id[string(char)])
+    end
 
     while true
         best_score = -Inf32
@@ -20,14 +29,10 @@ function bpe_encode(text::AbstractString, tokenizer::Tokenizer)
 
         for i in 1:(length(tokens) - 1)
             # check if we can merge the pair (tokens[i], tokens[i+1])
-            empty!(str_buffer)
-            append!(str_buffer, codeunits(vocab[tokens[i]]))
-            append!(str_buffer, codeunits(vocab[tokens[i+1]]))
+            id = get(token_to_id, id_to_token[tokens[i]] * id_to_token[tokens[i+1]], nothing)
 
-            id = findfirst(str -> codeunits(str) == str_buffer, vocab)
-
-            if !isnothing(id) && vocab_scores[id] > best_score
-                best_score = vocab_scores[id]
+            if !isnothing(id) && token_scores[id] > best_score
+                best_score = token_scores[id]
                 best_id = id
                 best_idx = i
             end
