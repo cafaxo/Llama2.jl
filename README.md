@@ -10,7 +10,7 @@ The goal is to provide code that is *readable* and *self-contained* (uses minima
 ## Installation
 
 This package is not yet registered. It can be installed by running
-```
+```julia
 pkg> add https://github.com/cafaxo/Llama2.jl
 ```
 
@@ -20,30 +20,30 @@ We currently support two model formats:
 - Andrej Karpathy's llama2.c format
 - A subset of the GGML format (currently only the `q4_K_S` variant)
 
-Download one of the llama2.c models from https://huggingface.co/karpathy/tinyllamas and the [tokenizer.bin](https://github.com/karpathy/llama2.c/raw/b4bb47bb7baf0a5fb98a131d80b4e1a84ad72597/tokenizer.bin) file.
+The llama2.c models can be found at https://huggingface.co/karpathy/tinyllamas.
+With these models, the [tokenizer.bin](https://github.com/karpathy/llama2.c/raw/b4bb47bb7baf0a5fb98a131d80b4e1a84ad72597/tokenizer.bin) file is also required.
 
-The model can be sampled with
-```
-julia> using Llama2
-
+Here is an output sample from the 42M tinyllama model:
+```julia
 julia> model = load_karpathy_model("stories42M.bin", "tokenizer.bin");
 
-julia> sample(model, "Julia is the best"; temperature = 0.5f0)
-<s>
-Julia is the best. She has to do what I say. She is not happy.
-[...]
+julia> sample(model, "Tim was happy."; temperature = 0.8f0)
+Tim was happy. He had a new toy. It was a big red car. He wanted to play with it all day.
+Tim took his car outside. He found a drain. It was a big drain. Tim put his car on the drain. The car went down the drain.
+Tim was sad. He missed his car. He went home. His mom saw him. She said, "Don't worry, we will get your car back." Tim was glad. He knew his mom would help him. They went to the drain. Tim's car came back. He was happy again.
+-------
+achieved tok/s: 282.80
 ```
 
-Here is a demo of a Llama2 7B model from https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGML:
+A compatible Llama2 7B model can be downloaded from https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGML.
 
 **Only the q4_K_S variant is supported.**
 
-```
+Here is an output sample:
+```julia
 julia> model = load_ggml_model("llama-2-7b-chat.ggmlv3.q4_K_S.bin");
 
 julia> sample(model, "The Julia programming language is")
-<s>
-The Julia programming language is a high-level, high-performance dynamic programming language for technical computing.
-
+The Julia programming language is an innovative language for technical computing and scientific research.
 ```
-Thanks to weight quantization, this only requires a machine with 8GB RAM.
+Thanks to weight quantization, a machine with 8GB RAM is sufficient to run this.

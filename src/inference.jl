@@ -236,6 +236,7 @@ function sample(
         model::LanguageModel,
         prompt::String = "";
         temperature::Float32 = 0.9f0,
+        stop_on_special_token = true,
     )
 
     (; config, weights, tokenizer) = model
@@ -246,13 +247,16 @@ function sample(
 
     time_start = time_ns()
 
-    token = 2 # BOS token in Llama-2 sentencepiece
+    bos_token_id = 2 # beginning of sentence token id
+    eos_token_id = 3 # end of sentence token id
 
-    println("<s>")
+    token = bos_token_id
+    generated_seq_len = 0
 
     for pos in 1:config.seq_len
         # forward the transformer to get logits for the next token
         transformer!(token, pos, config, state, weights)
+        generated_seq_len += 1
 
         if pos <= length(prompt_tokens)
             next = prompt_tokens[pos]
@@ -271,7 +275,18 @@ function sample(
             end
         end
 
-        print(tokenizer.id_to_token[next])
+        if stop_on_special_token && (next == bos_token_id || next == eos_token_id)
+            break
+        end
+
+        next_str = tokenizer.id_to_token[next]
+
+        if pos == 1 && length(prompt_tokens) >= 1
+            # do not print the input padding that we added
+            next_str = next_str[2:end]
+        end
+
+        print(next_str)
 
         # advance forward
         token = next
@@ -281,7 +296,7 @@ function sample(
 
     # report our achieved tok/s
     time_end = time_ns()
-    @printf "achieved tok/s: %f\n" config.seq_len / (time_end - time_start)*1e9
+    @printf "-------\nachieved tok/s: %.2f\n" generated_seq_len / (time_end - time_start) * 1e9
 
     return nothing
 end
