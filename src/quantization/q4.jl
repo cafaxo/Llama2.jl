@@ -223,9 +223,9 @@ function LinearAlgebra.dot(x::AbstractVector{block_q4_K}, y::AbstractVector{bloc
             ntuple(@inline(l -> reinterpret(Int8, q4[32*(j-1)+l] >> 4)), Val(32)),
         )), Val(QK_K÷64))
 
-        a = @inline reinterpret(NTuple{256,Int8}, a_)
+        a = @inline reinterpret_nonprimitive(NTuple{256,Int8}, a_)
 
-        utmp0, utmp1, utmp2 = @inline reinterpret(NTuple{3,UInt32}, x[i].scales)
+        utmp0, utmp1, utmp2 = @inline reinterpret_nonprimitive(NTuple{3,UInt32}, x[i].scales)
 
         utmp3 = ((utmp2 >> 4) & kmask2) | (((utmp1 >> 6) & kmask3) << 4)
         uaux = utmp1 & kmask1
@@ -233,8 +233,8 @@ function LinearAlgebra.dot(x::AbstractVector{block_q4_K}, y::AbstractVector{bloc
         utmp2 = uaux
         utmp0 &= kmask1
 
-        scales = @inline reinterpret(NTuple{8,UInt8}, (utmp0, utmp1))
-        mins = @inline reinterpret(NTuple{8,UInt8}, (utmp2, utmp3))
+        scales = @inline reinterpret_nonprimitive(NTuple{8,UInt8}, (utmp0, utmp1))
+        mins = @inline reinterpret_nonprimitive(NTuple{8,UInt8}, (utmp2, utmp3))
 
         sumi = Int32(0)
 
