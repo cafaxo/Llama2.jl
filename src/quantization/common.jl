@@ -41,21 +41,25 @@ function quantize(::Type{T}, x::AbstractVector{Float32}) where {T<:Union{block_q
     return quantize!(Vector{T}(undef, length(x) ÷ QK_K), x)
 end
 
-@inline function reinterpret_nonprimitive(::Type{Out}, x) where {Out}
-    In = typeof(x)
-    if !isbitstype(Out)
-        error("reinterpret target type must be isbits")
-    end
-    if !isbitstype(In)
-        error("reinterpret source type must be isbits")
-    end
+if isdefined(Base, :_memcpy!)
+    @inline function reinterpret_nonprimitive(::Type{Out}, x) where {Out}
+        In = typeof(x)
+        if !isbitstype(Out)
+            error("reinterpret target type must be isbits")
+        end
+        if !isbitstype(In)
+            error("reinterpret source type must be isbits")
+        end
 
-    in = Ref{In}(x)
-    ptr_in = Base.unsafe_convert(Ptr{In}, in)
-    out = Ref{Out}()
-    ptr_out = Base.unsafe_convert(Ptr{Out}, out)
-    GC.@preserve in out begin
-        Base._memcpy!(ptr_out, ptr_in, sizeof(Out))
+        in = Ref{In}(x)
+        ptr_in = Base.unsafe_convert(Ptr{In}, in)
+        out = Ref{Out}()
+        ptr_out = Base.unsafe_convert(Ptr{Out}, out)
+        GC.@preserve in out begin
+            Base._memcpy!(ptr_out, ptr_in, sizeof(Out))
+        end
+        return out[]
     end
-    return out[]
+else
+    const reinterpret_nonprimitive = reinterpret
 end
