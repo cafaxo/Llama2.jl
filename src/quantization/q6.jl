@@ -95,7 +95,7 @@ function dequantize!(y::AbstractVector{Float32}, x::AbstractVector{block_q6_K})
     @assert k % QK_K == 0
     nb = k ÷ QK_K
 
-    for i in 1:nb
+    @inbounds for i in 1:nb
         ql = MutableField(UInt8, x, i, :ql)
         qh = MutableField(UInt8, x, i, :qh)
         scales = MutableField(Int8, x, i, :scales)
