@@ -17,9 +17,9 @@ function bpe_encode(text::AbstractString, tokenizer::Tokenizer; pad_input=true)
         push!(tokens, token_to_id[" "])
     end
 
-    # encode every individual char in the input string
-    for char in text
-        push!(tokens, token_to_id[string(char)])
+    # encode every individual codeunit in the input string
+    for codeunit in codeunits(text)
+        push!(tokens, token_to_id[String(UInt8[codeunit])])
     end
 
     while true
