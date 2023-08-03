@@ -75,7 +75,7 @@ KVCache(head_size::Int, n_heads::Int, seq_len::Int) = KVCache(
     q::Vector{Float32}      # query (dim,)
     k::Vector{Float32}      # key (dim,)
     v::Vector{Float32}      # value (dim,)
-    att::Vector{Float32}    # buffer for scores/attention values (seq_len,)
+    att::Vector{Float32}    # buffer for scores/attention values (seq_len * n_heads,)
     logits::Vector{Float32} # output logits
     # kv cache
     kvcache_layers::Vector{KVCache}
@@ -90,7 +90,7 @@ RunState(c::ModelConfig) = RunState(;
     q              = zeros(Float32, c.dim),
     k              = zeros(Float32, c.dim),
     v              = zeros(Float32, c.dim),
-    att            = zeros(Float32, c.seq_len),
+    att            = zeros(Float32, c.seq_len * c.n_heads),
     logits         = zeros(Float32, c.vocab_size),
     kvcache_layers = [KVCache(c.dim ÷ c.n_heads, c.n_heads, c.seq_len) for _ in 1:c.n_layers],
 )
@@ -172,27 +172,28 @@ end
         copyto!(kv.key_cache[:, :, pos], s.k)
         copyto!(kv.value_cache[:, :, pos], s.v)
 
-        # multihead attention. iterate over all heads
+        # take a contiguous slice of the attention buffer
+        att = reshape(s.att[1:(n_heads*pos)], pos, n_heads)
+
+        # multihead attention
         for h in 1:n_heads
-            # get the query vector for this head
-            q_h = q[:, h]
-            # iterate over all timesteps, including the current one
-            for t in 1:pos
-                # get the key vector for this head and at this timestep
-                k_h = kv.key_cache[:, h, t]
-                # calculate the attention score as the dot product of q and k
-                score = dot(q_h, k_h) / sqrt(Float32(head_size))
-                # save the score to the attention buffer
-                s.att[t] = score
-            end
+            mul!(
+                att[:, h],
+                kv.key_cache[:, h, 1:pos]',
+                q[:, h],
+            )
+        end
 
-            # softmax the scores to get attention weights, from 0..pos inclusively
-            softmax!(s.att[1:pos])
+        att ./= sqrt(Float32(head_size))
 
-            xb = reshape(s.xb, head_size, n_heads)
+        xb = reshape(s.xb, head_size, n_heads)
+
+        for h in 1:n_heads
+            # softmax the scores to get attention weights
+            softmax!(att[:, h])
 
             # weighted sum of the values, store back into xb
-            mul!(xb[:, h], kv.value_cache[:, h, 1:pos], s.att[1:pos])
+            mul!(xb[:, h], kv.value_cache[:, h, 1:pos], att[:, h])
         end
 
         # final matmul to get the output of the attention
