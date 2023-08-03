@@ -83,7 +83,7 @@ function LinearAlgebra.dot(x::AbstractVector{block_q6_K}, y::AbstractVector{bloc
 
         isum_mins = sum(vwidemul(q8sums, q6scales))
 
-        isum = 0
+        isum = Int32(0)
 
         qh = unsafe_pointer_to_field(x, i, :qh)
         q6 = unsafe_pointer_to_field(x, i, :ql)
@@ -110,8 +110,6 @@ function LinearAlgebra.dot(x::AbstractVector{block_q6_K}, y::AbstractVector{bloc
             q6h1 = (qhbits1 & 0x03) << 4
             q6h2 = ((qhbits0 >> 2) & 0x03) << 4
             q6h3 = ((qhbits1 >> 2) & 0x03) << 4
-
-            m4b = 0x0f
 
             q6bytes0 = reinterpret(Vec{16,Int8}, (q6bits0 & 0x0f) | q6h0)
             q6bytes1 = reinterpret(Vec{16,Int8}, (q6bits1 & 0x0f) | q6h1)
