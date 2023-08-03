@@ -37,7 +37,8 @@ achieved tok/s: 282.80
 
 A compatible Llama2 7B model can be downloaded from https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGML.
 
-**Only the q4_K_S variant is supported.**
+- **Only the q4_K_S variant is supported.**
+- **Launch Julia with `julia -t auto` for better performance (multithreading)**
 
 Here is an output sample:
 ```julia
