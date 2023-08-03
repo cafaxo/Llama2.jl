@@ -237,6 +237,7 @@ function sample(
         prompt::String = "";
         temperature::Float32 = 0.9f0,
         stop_on_special_token = true,
+        max_seq_len = typemax(Int),
     )
 
     (; config, weights, tokenizer) = model
@@ -253,7 +254,7 @@ function sample(
     token = bos_token_id
     generated_seq_len = 0
 
-    for pos in 1:config.seq_len
+    for pos in 1:min(config.seq_len, max_seq_len)
         # forward the transformer to get logits for the next token
         transformer!(token, pos, config, state, weights)
         generated_seq_len += 1
