@@ -57,12 +57,12 @@ end
 
 struct KVCache
     key_cache::Array{Float32,3}   # (head_size, n_heads, seq_len)
-    value_cache::Array{Float32,3} # (head_size, n_heads, seq_len)
+    value_cache::Array{Float32,3} # (seq_len, head_size, n_heads)
 end
 
 KVCache(head_size::Int, n_heads::Int, seq_len::Int) = KVCache(
     zeros(Float32, head_size, n_heads, seq_len),
-    zeros(Float32, head_size, n_heads, seq_len),
+    zeros(Float32, seq_len, head_size, n_heads),
 )
 
 @kwdef struct RunState
@@ -133,6 +133,38 @@ function softmax!(x)
     return nothing
 end
 
+function attention_weights!(att, key_cache, q)
+    @inbounds @fastmath for h in axes(att, 2)
+        for t in axes(att, 1)
+            s = 0f0
+
+            for i in axes(q, 1)
+                s += q[i, h] * key_cache[i, h, t]
+            end
+
+            att[t, h] = s
+        end
+    end
+
+    return att
+end
+
+function combine_values!(xb, value_cache, att)
+    @inbounds @fastmath for h in axes(xb, 2)
+        for i in axes(xb, 1)
+            s = 0f0
+
+            for t in axes(att, 1)
+                s += att[t, h] * value_cache[t, i, h]
+            end
+
+            xb[i, h] = s
+        end
+    end
+
+    return xb
+end
+
 @views function transformer!(token::Int, pos::Int, config::ModelConfig, s::RunState, weights::TransformerWeights)
     x = s.x
 
@@ -170,31 +202,25 @@ end
 
         # save key,value at this time step (pos) to our kv cache
         copyto!(kv.key_cache[:, :, pos], s.k)
-        copyto!(kv.value_cache[:, :, pos], s.v)
+        copyto!(kv.value_cache[pos, :, :], s.v)
 
         # take a contiguous slice of the attention buffer
         att = reshape(s.att[1:(n_heads*pos)], pos, n_heads)
 
         # multihead attention
-        for h in 1:n_heads
-            mul!(
-                att[:, h],
-                kv.key_cache[:, h, 1:pos]',
-                q[:, h],
-            )
-        end
+        attention_weights!(att, kv.key_cache, q)
 
         att ./= sqrt(Float32(head_size))
-
-        xb = reshape(s.xb, head_size, n_heads)
 
         for h in 1:n_heads
             # softmax the scores to get attention weights
             softmax!(att[:, h])
-
-            # weighted sum of the values, store back into xb
-            mul!(xb[:, h], kv.value_cache[:, h, 1:pos], att[:, h])
         end
+
+        xb = reshape(s.xb, head_size, n_heads)
+
+        # weighted sum of the values
+        combine_values!(xb, kv.value_cache, att)
 
         # final matmul to get the output of the attention
         matmul!(s.xb2, w.wo, s.xb)
