@@ -25,6 +25,8 @@ With these models, the [tokenizer.bin](https://github.com/karpathy/llama2.c/raw/
 
 Here is an output sample from the 42M tinyllama model:
 ```julia
+julia> using Llama2
+
 julia> model = load_karpathy_model("stories42M.bin", "tokenizer.bin");
 
 julia> sample(model, "Tim was happy."; temperature = 0.8f0)
@@ -42,6 +44,8 @@ A compatible Llama2 7B model can be downloaded from https://huggingface.co/TheBl
 
 Here is an output sample:
 ```julia
+julia> using Llama2
+
 julia> model = load_ggml_model("llama-2-7b-chat.ggmlv3.q4_K_S.bin");
 
 julia> sample(model, "The Julia programming language is")
