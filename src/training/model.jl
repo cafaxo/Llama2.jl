@@ -13,8 +13,6 @@ function llama2_graph(x::Tensor; dim::Int, hidden_dim::Int, n_layers::Int, n_hea
         # attention rmsnorm
         y = rmsnorm(x; name="layer$(l)_rms_att_weight")
 
-        # x has shape (head_size, n_heads, seq_len, batch_size)
-
         Q = dense(y; out_features=dim, name="layer$(l)_wq")
         K = dense(y; out_features=dim, name="layer$(l)_wk")
         V = dense(y; out_features=dim, name="layer$(l)_wv")
