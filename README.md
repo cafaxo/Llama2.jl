@@ -1,11 +1,6 @@
 # Llama2.jl
 
-This project started as a port of Andrej Karpathy's llama2.c (https://github.com/karpathy/llama2.c).
-The quantization code is a port from https://github.com/ggerganov/llama.cpp.
-
-## Goals of this project
-
-The goal is to provide code that is *readable* and *self-contained* (uses minimal dependencies).
+Llama2.jl provides simple code for inference and training of llama2-based language models.
 
 ## Installation
 
@@ -52,3 +47,40 @@ julia> sample(model, "The Julia programming language is")
 The Julia programming language is an innovative language for technical computing and scientific research.
 ```
 Thanks to weight quantization, a machine with 8GB RAM is sufficient to run this.
+
+## Experimental training support
+
+Llama2.jl can now train tiny llama2 models on the CPU:
+```julia
+julia> using Llama2
+
+julia> text = read("tinyshakespeare.txt", String);
+
+julia> tokenizer = CharTokenizer(text);
+
+julia> tokens = encode(text, tokenizer);
+
+julia> config = ModelConfig(dim=64, hidden_dim=96, n_layers=4, n_heads=4, n_kv_heads=4, vocab_size=length(tokenizer.id_to_token), seq_len=128)
+ModelConfig(
+  dim         = 64,
+  hidden_dim  = 96,
+  n_layers    = 4,
+  n_heads     = 4,
+  n_kv_heads  = 4,
+  vocab_size  = 65,
+  seq_len     = 128,
+)
+
+julia> weights = train(config, tokens; n_tokens=4_000_000, batch_size=4);
+Training a model with 148160 parameters...
+Progress: 100%|███████████████████████████| Time: 0:01:31 (11.66 ms/it)
+  iteration:      7812 / 7812
+  training_loss:  1.497
+
+julia> model = LanguageModel(config, tokenizer, weights);
+```
+
+## Acknowledgements
+
+This project started as a port of Andrej Karpathy's llama2.c (https://github.com/karpathy/llama2.c).
+The quantization code is a port from https://github.com/ggerganov/llama.cpp.

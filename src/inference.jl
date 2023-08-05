@@ -43,10 +43,10 @@ end
     output_weight::Matrix{OW} # (dim, vocab_size)
 end
 
-struct LanguageModel{TW<:TransformerWeights}
+struct LanguageModel{TOK<:Tokenizer,W<:TransformerWeights}
     config::ModelConfig
-    tokenizer::Tokenizer
-    weights::TW
+    tokenizer::TOK
+    weights::W
 end
 
 function Base.show(io::IO, mime::MIME"text/plain", model::LanguageModel)
@@ -265,11 +265,16 @@ function sample(
         temperature::Float32 = 0.9f0,
         stop_on_special_token = true,
         max_seq_len = typemax(Int),
+        bos_token = true,
     )
+
+    if !bos_token && isempty(prompt)
+        error("Prompt cannot be empty if bos_token = false")
+    end
 
     (; config, weights, tokenizer) = model
 
-    prompt_tokens = bpe_encode(prompt, tokenizer)
+    prompt_tokens = encode(prompt, tokenizer)
 
     state = RunState(config)
 
@@ -278,7 +283,15 @@ function sample(
     bos_token_id = 2 # beginning of sentence token id
     eos_token_id = 3 # end of sentence token id
 
-    token = bos_token_id
+    if bos_token
+        pushfirst!(prompt_tokens, bos_token_id)
+    end
+
+    if !bos_token
+        print(tokenizer.id_to_token[prompt_tokens[1]])
+    end
+
+    token = prompt_tokens[1]
     generated_seq_len = 0
 
     for pos in 1:min(config.seq_len, max_seq_len)
@@ -286,8 +299,8 @@ function sample(
         transformer!(token, pos, config, state, weights)
         generated_seq_len += 1
 
-        if pos <= length(prompt_tokens)
-            next = prompt_tokens[pos]
+        if pos+1 <= length(prompt_tokens)
+            next = prompt_tokens[pos+1]
         else
             # sample the next token
             if temperature == 0f0
@@ -309,10 +322,10 @@ function sample(
 
         next_str = tokenizer.id_to_token[next]
 
-        if pos == 1 && length(prompt_tokens) >= 1
-            # do not print the input padding that we added
-            next_str = next_str[2:end]
-        end
+        #if pos == 1 && length(prompt_tokens) >= 1
+        #    # do not print the input padding that we added
+        #    next_str = next_str[2:end]
+        #end
 
         print(next_str)
 

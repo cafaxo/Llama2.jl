@@ -72,7 +72,7 @@ function load_karpathy_tokenizer(filename::AbstractString, vocab_size::Int)
         end
     end
 
-    return Tokenizer(id_to_token, token_to_id, token_scores)
+    return BPETokenizer(id_to_token, token_to_id, token_scores)
 end
 
 function load_karpathy_model(

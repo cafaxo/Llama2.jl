@@ -1,10 +1,12 @@
-struct Tokenizer
+abstract type Tokenizer end
+
+struct BPETokenizer <: Tokenizer
     id_to_token::Vector{String}
     token_to_id::Dict{String,Int}
     token_scores::Vector{Float32}
 end
 
-function bpe_encode(text::AbstractString, tokenizer::Tokenizer; pad_input=true)
+function encode(text::AbstractString, tokenizer::BPETokenizer; pad_input=true)
     (; id_to_token, token_to_id, token_scores) = tokenizer
 
     tokens = Int[]
@@ -50,4 +52,19 @@ function bpe_encode(text::AbstractString, tokenizer::Tokenizer; pad_input=true)
     end
 
     return tokens
+end
+
+struct CharTokenizer <: Tokenizer
+    id_to_token::Vector{Char}
+    token_to_id::Dict{Char,Int}
+end
+
+function CharTokenizer(text::AbstractString)
+    id_to_token = sort(collect(Set(text)))
+    token_to_id = Dict(token => i for (i, token) in enumerate(id_to_token))
+    return CharTokenizer(id_to_token, token_to_id)
+end
+
+function encode(text::AbstractString, tokenizer::CharTokenizer)
+    return [tokenizer.token_to_id[token] for token in text]
 end

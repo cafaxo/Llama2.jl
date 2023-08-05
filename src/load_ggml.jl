@@ -48,7 +48,7 @@ function read_ggml_tokenizer(file::IOStream, n_vocab::Int)
         token_to_id[word] = i
     end
 
-    return Tokenizer(id_to_token, token_to_id, token_scores)
+    return BPETokenizer(id_to_token, token_to_id, token_scores)
 end
 
 function read_ggml_tensor(tensor_type::GGML_TYPE, size::Tuple, file::IOStream)
