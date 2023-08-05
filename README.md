@@ -78,6 +78,18 @@ Progress: 100%|█████████████████████�
   training_loss:  1.497
 
 julia> model = LanguageModel(config, tokenizer, weights);
+
+julia> sample(model, "Julia is"; stop_on_special_token=false, bos_token=false)
+Julia is to seen all?
+
+FLORIZEL:
+Now the sir?
+
+JOHN ORTHNROLIO:
+Talksabated with me with a more thou Vrequitest.
+The city good of
+-------
+achieved tok/s: 11479.52
 ```
 
 ## Acknowledgements
