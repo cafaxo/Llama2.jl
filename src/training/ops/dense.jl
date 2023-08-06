@@ -2,7 +2,6 @@ struct DenseOp{T}
     weights::Tensor{T,2}
     input::Tensor{T,2}
     output::Tensor{T,2}
-    name::String
 end
 
 function dense(input::Tensor{T,2}; out_features::Int, name::String) where {T}
@@ -22,7 +21,7 @@ function dense(input::Tensor{T,2}; out_features::Int, name::String) where {T}
     k = 1 / in_features
     rand!(Uniform(-sqrt(k), sqrt(k)), weights.value)
 
-    push!(graph.operations, DenseOp(weights, input, output, name))
+    push!(graph.operations, DenseOp(weights, input, output))
     return output
 end
 
