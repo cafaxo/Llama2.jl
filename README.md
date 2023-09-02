@@ -41,6 +41,12 @@ Here is an output sample:
 ```julia
 julia> using Llama2
 
+julia> download("https://huggingface.co/karpathy/tinyllamas/resolve/main/stories42M.bin", "stories42M.bin")
+"stories42M.bin"
+
+julia> download("https://raw.githubusercontent.com/karpathy/llama2.c/b4bb47bb7baf0a5fb98a131d80b4e1a84ad72597/tokenizer.bin", "tokenizer.bin")
+"tokenizer.bin"
+
 julia> model = load_ggml_model("llama-2-7b-chat.ggmlv3.q4_K_S.bin");
 
 julia> sample(model, "The Julia programming language is")
