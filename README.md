@@ -22,6 +22,12 @@ Here is an output sample from the 42M tinyllama model:
 ```julia
 julia> using Llama2
 
+julia> download("https://huggingface.co/karpathy/tinyllamas/resolve/main/stories42M.bin", "stories42M.bin")
+"stories42M.bin"
+
+julia> download("https://raw.githubusercontent.com/karpathy/llama2.c/b4bb47bb7baf0a5fb98a131d80b4e1a84ad72597/tokenizer.bin", "tokenizer.bin")
+"tokenizer.bin"
+
 julia> model = load_karpathy_model("stories42M.bin", "tokenizer.bin");
 
 julia> sample(model, "Tim was happy."; temperature = 0.8f0)
