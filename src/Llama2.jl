@@ -10,7 +10,7 @@ using Random
 using Distributions
 
 export ModelConfig, CharTokenizer, LanguageModel
-export load_ggml_model, load_karpathy_model, encode, sample
+export load_ggml_model, load_karpathy_model, encode, sample, load_gguf_model
 export train
 
 # quantization
@@ -28,6 +28,7 @@ include("inference.jl")
 
 # model loading
 include("load_ggml.jl")
+include("load_gguf.jl")
 include("load_karpathy.jl")
 
 # training

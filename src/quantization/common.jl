@@ -7,6 +7,25 @@ struct block_q4_K
     qs::NTuple{QK_K÷2,UInt8} # 4-bit quants
 end
 
+# 5-bit quantization
+# 8 blocks of 32 elements each
+# weight is represented as x = a * q + b
+# Effectively 5.5 bits per weight
+# struct block_q5_K
+#     d::Float16                    # super-block scales
+#     scales::NTuple{QK_K÷16,Int8}  # 8-bit block scales
+#     qh::NTuple{QK_K÷8,UInt8}      # quants, high bit
+#     qs::NTuple{QK_K÷2,UInt8}      # quants, low 4 bits
+# end
+
+struct block_q5_K
+    d::Float16                    # super-block scale for quantized scales
+    dmin::Float16                 # super-block scale for quantized mins
+    scales::NTuple{12,UInt8}  # 8-bit block scales
+    qh::NTuple{QK_K÷8,UInt8}      # quants, high bit
+    qs::NTuple{QK_K÷2,UInt8}      # quants, low 4 bits
+end
+
 # 6-bit quantization
 # weight is represented as x = a * q
 # 16 blocks of 16 elements each
@@ -30,13 +49,13 @@ function dequantize!(y::AbstractVector{Float32}, x::AbstractVector{Float32})
     return y
 end
 
-function dequantize(x::AbstractVector{<:Union{block_q4_K,block_q6_K,block_q8_K}})
+function dequantize(x::AbstractVector{<:Union{block_q4_K,block_q5_K,block_q6_K,block_q8_K}})
     y = zeros(Float32, length(x)*QK_K)
     dequantize!(y, x)
     return y
 end
 
-function quantize(::Type{T}, x::AbstractVector{Float32}) where {T<:Union{block_q4_K,block_q6_K,block_q8_K}}
+function quantize(::Type{T}, x::AbstractVector{Float32}) where {T<:Union{block_q4_K,block_q5_K,block_q6_K,block_q8_K}}
     @assert length(x) % QK_K == 0
     return quantize!(Vector{T}(undef, length(x) ÷ QK_K), x)
 end
@@ -61,3 +80,6 @@ end
     end
     return out[]
 end
+
+
+# https://github.com/ggerganov/llama.cpp/blob/master/k_quants.h

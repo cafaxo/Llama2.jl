@@ -136,7 +136,7 @@ function TransformerWeights(ggml_dict::Dict{String,Any}, layer_count::Int)
         token_embedding_table = ggml_dict["tok_embeddings.weight"],
         rms_final_weight      = ggml_dict["norm.weight"],
         output_weight         = ggml_dict["output.weight"],
-        layers,
+        layers                = layers,
     )
 end
 

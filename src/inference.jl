@@ -35,9 +35,24 @@ end
     w3::Matrix{Q} # (dim, hidden_dim)
 end
 
+@kwdef struct TransformerLayerWeights_gguf{Q1,Q2}
+    # weights for rmsnorms
+    rms_att_weight::Vector{Float32} # (dim,)
+    rms_ffn_weight::Vector{Float32} # (dim,)
+    # weights for matmuls
+    wq::Matrix{Q1} # (dim, dim)
+    wk::Matrix{Q1} # (dim, dim)
+    wv::Matrix{Union{Q1,Q2}} # (dim, dim)
+    wo::Matrix{Q1} # (dim, dim)
+    # weights for ffn
+    w1::Matrix{Q1} # (dim, hidden_dim)
+    w2::Matrix{Union{Q1,Q2}} # (hidden_dim, dim)
+    w3::Matrix{Q1} # (dim, hidden_dim)
+end
+
 @kwdef struct TransformerWeights{Q,OW}
     token_embedding_table::Matrix{Q} # (dim, vocab_size)
-    layers::Vector{TransformerLayerWeights{Q}}
+    layers::Vector{TransformerLayerWeights_gguf{Q,OW}}    # Vector{TransformerLayerWeights{Q}}  TransformerLayerWeights_gguf
     # final rmsnorm
     rms_final_weight::Vector{Float32} # (dim,)
     output_weight::Matrix{OW} # (dim, vocab_size)
