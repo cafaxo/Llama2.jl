@@ -12,6 +12,10 @@ file_name = "/home/zhangyong/codes/julia_learn/others/llm/models/llama2/llama-2-
 
 # https://huggingface.co/about0/llama-v2-chinese-ymcui-alpaca-GGML-13B/blob/main/llama-v2-chinese-alpaca-13B-Q4_K_S.ggml
 # file_name = "/home/zhangyong/codes/julia_learn/others/llm/models/llama2/llama-v2-chinese-alpaca-13B-Q4_K_S.ggml"  # ok, 可用. 8.3G内存
+
+file_name = "/home/zhangyong/codes/julia_learn/others/llm/models/llama2/sciphi-self-rag-mistral-7b-32k.Q4_K_S.gguf"  # ok, 可用. 8.3G内存
+
+
 model = load_gguf_model(file_name)
 # model = load_ggml_model(file_name)
 # sample(model, "The Julia programming language is"; temperature = 1.0f0)

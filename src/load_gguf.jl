@@ -1,6 +1,6 @@
 
 const GGUF_MAGIC             = 0x46554747
-const GGUF_VERSION           = 2  # 2,3
+const GGUF_VERSION           = 3  # 2,3
 const GGUF_DEFAULT_ALIGNMENT = 32
 
 @enum GGML_TYPE begin
@@ -416,4 +416,4 @@ function load_gguf_model(filename::AbstractString)
 
 end
 
-# https://github.com/philpax/ggml/blob/gguf-spec/docs/gguf.md
+# https://github.com/ggerganov/ggml/blob/master/docs/gguf.md

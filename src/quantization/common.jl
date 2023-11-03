@@ -21,7 +21,7 @@ end
 struct block_q5_K
     d::Float16                    # super-block scale for quantized scales
     dmin::Float16                 # super-block scale for quantized mins
-    scales::NTuple{12,UInt8}  # 8-bit block scales
+    scales::NTuple{12,UInt8}      # 8-bit block scales
     qh::NTuple{QK_K÷8,UInt8}      # quants, high bit
     qs::NTuple{QK_K÷2,UInt8}      # quants, low 4 bits
 end
@@ -82,4 +82,4 @@ end
 end
 
 
-# https://github.com/ggerganov/llama.cpp/blob/master/k_quants.h
+# https://github.com/ggerganov/llama.cpp/blob/master/ggml-quants.h
