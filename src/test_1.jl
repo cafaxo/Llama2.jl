@@ -14,7 +14,7 @@ file_name = "/home/zhangyong/codes/julia_learn/others/llm/models/llama2/llama-2-
 # file_name = "/home/zhangyong/codes/julia_learn/others/llm/models/llama2/llama-v2-chinese-alpaca-13B-Q4_K_S.ggml"  # ok, 可用. 8.3G内存
 
 # https://huggingface.co/TheBloke/SciPhi-Self-RAG-Mistral-7B-32k-GGUF/blob/main/sciphi-self-rag-mistral-7b-32k.Q4_K_S.gguf
-file_name = "/home/zhangyong/codes/julia_learn/others/llm/models/llama2/sciphi-self-rag-mistral-7b-32k.Q4_K_S.gguf"  # ok, 可用. 8.3G内存
+file_name = "/home/zhangyong/codes/julia_learn/others/llm/models/llama2/sciphi-self-rag-mistral-7b-32k.Q4_K_S.gguf"   
 
 
 model = load_gguf_model(file_name)

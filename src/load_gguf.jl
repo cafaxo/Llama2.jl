@@ -189,25 +189,20 @@ function read_gguf_header(file::IOStream)
         end
 
         # println(i, ", ", key.string, ", ", value_type, ",", value_len, "================")
-        # if key.string == "tokenizer.ggml.bos_token_id"
-        #     println("tokenizer.ggml.bos_token_id:", value)
-        # elseif key.string == "tokenizer.ggml.eos_token_id"
-        #     println("tokenizer.ggml.eos_token_id:", value)
-        # elseif key.string == "tokenizer.ggml.unknown_token_id"
-        #     println("tokenizer.ggml.unknown_token_id:", value)
-        # end
-        if key.string == "general.quantization_version"
+        if key.string == "general.name"
+            println("general.name:", value)
+        elseif key.string == "general.architecture"
+            println("general.architecture:", value)
+        elseif key.string == "general.quantization_version"
             println("quantization_version:", value)
         elseif key.string == "general.file_type"
             println("file_type:", FILE_TYPE(value))
         elseif key.string == "tokenizer.ggml.model"
-            println("model:", value)
+            println("tokenizer.ggml.model:", value)
         elseif key.string == "tokenizer.ggml.token_type"
-            println("token_type:", length(value), ",", value[1].value, ",", value[2].value, ",", value[4].value, ",", value[6].value, ",", value[8].value)
+            println("tokenizer.ggml.token_type:", length(value), ",", value[1].value, ",", value[2].value, ",", value[4].value, ",", value[6].value, ",", value[8].value)
         elseif key.string == "tokenizer.ggml.tokens"
-            println("tokens:", length(value), ",", value[1].value, value[2].value, ",", value[4].value, ",", value[6].value, ",", value[8].value)
-        elseif key.string == "tokenizer.ggml.bos_token_id"
-            println("bos_token_id:", value)
+            println("tokenizer.ggml.tokens:", length(value), ",", value[1].value, value[2].value, ",", value[4].value, ",", value[6].value, ",", value[8].value)
         end
 
         gguf_value = GGUFMetadataValue(value_type, value_len, value)
@@ -314,7 +309,7 @@ function TransformerLayerWeights_1(ggml_dict::Dict{String,Any}, layer_index::Int
         error("missing blk.$(layer_index-1) weights")
     end
 
-    return TransformerLayerWeights_gguf(;
+    layer_weight = TransformerLayerWeights_gguf{Llama2.block_q4_K, Llama2.block_q5_K}(;
         rms_att_weight = ggml_dict["blk.$(layer_index-1).attn_norm.weight"],
         rms_ffn_weight = ggml_dict["blk.$(layer_index-1).ffn_norm.weight"],
         wq             = ggml_dict["blk.$(layer_index-1).attn_q.weight"],
@@ -324,14 +319,17 @@ function TransformerLayerWeights_1(ggml_dict::Dict{String,Any}, layer_index::Int
         w1             = ggml_dict["blk.$(layer_index-1).ffn_up.weight"],
         w2             = ggml_dict["blk.$(layer_index-1).ffn_down.weight"],
         w3             = ggml_dict["blk.$(layer_index-1).ffn_gate.weight"],
-    )
+        )
+
+    return layer_weight
 end
 
 function TransformerWeights_1(ggml_dict::Dict{String,Any}, layer_count::Int)
     # println(keys(ggml_dict), layer_count)  # 32
-    layers = [TransformerLayerWeights_1(ggml_dict, 1)]  # 为了指定[]的类型, 所以这里先指定一个元素
+    # layers = [TransformerLayerWeights_1(ggml_dict, 1)]  # 为了指定[]的类型, 所以这里先指定一个元素. 但是这里不一定是这个固定的类型
+    layers = Vector{TransformerLayerWeights_gguf}(undef, layer_count)
 
-    for i in 2:layer_count
+    for i in 1:layer_count
         push!(layers, TransformerLayerWeights_1(ggml_dict, i))
     end
 
@@ -358,7 +356,7 @@ function load_gguf_model(filename::AbstractString)
 
         version = read(file, UInt32)
 
-        if version != GGUF_VERSION
+        if version ∉ [2,3]   # != GGUF_VERSION
             error("Only the GGUF file format is supported,  version")
         end
         seek(file, 0)
@@ -379,7 +377,7 @@ function load_gguf_model(filename::AbstractString)
                 GGML_TYPE(read(file, UInt32)),
                 read(file, UInt64)
             )
-            # println(tensor_info.name.string, ", ", tensor_info.n_dimensions, ", ", tensor_info.type, ", ", tensor_info.dimensions) 
+            # println(i,", ",  tensor_info.name.string, ", ", tensor_info.n_dimensions, ", ", tensor_info.type, ", ", tensor_info.dimensions) 
             push!(tensor_infos, tensor_info)
         end
        
