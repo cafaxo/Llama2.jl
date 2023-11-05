@@ -16,7 +16,7 @@ function encode(text::AbstractString, tokenizer::BPETokenizer; pad_input=true)
     end
 
     if pad_input
-        # push!(tokens, token_to_id[" "])
+        push!(tokens, token_to_id[" "])
     end
 
     # encode every individual codeunit in the input string

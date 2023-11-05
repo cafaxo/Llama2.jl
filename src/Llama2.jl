@@ -17,6 +17,7 @@ export train
 include("quantization/utils.jl")
 include("quantization/common.jl")
 include("quantization/q4.jl")
+include("quantization/q5.jl")
 include("quantization/q6.jl")
 include("quantization/q8.jl")
 include("quantization/vecdot.jl")

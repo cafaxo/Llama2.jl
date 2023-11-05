@@ -52,7 +52,7 @@ end
 
 @kwdef struct TransformerWeights{Q,OW}
     token_embedding_table::Matrix{Q} # (dim, vocab_size)
-    layers::Vector{TransformerLayerWeights_gguf}    # Vector{TransformerLayerWeights{Q}}
+    layers::Union{Vector{TransformerLayerWeights{Q}}, Vector{TransformerLayerWeights_gguf}}
     # final rmsnorm
     rms_final_weight::Vector{Float32} # (dim,)
     output_weight::Matrix{OW} # (dim, vocab_size)
@@ -194,7 +194,7 @@ end
 
     # copy the token embedding into x
     dequantize!(x, weights.token_embedding_table[:, token])
-    println(typeof(weights.layers[1]))
+
     # forward all the layers
     for l in 1:n_layers
         w = weights.layers[l]
@@ -295,8 +295,8 @@ function sample(
 
     time_start = time_ns()
 
-    bos_token_id = 2 # beginning of sentence token id
-    eos_token_id = 3 # end of sentence token id
+    bos_token_id = 1 # beginning of sentence token id. 2
+    eos_token_id = 2 # end of sentence token id. 3
 
     if bos_token
         pushfirst!(prompt_tokens, bos_token_id)

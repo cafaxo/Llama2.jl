@@ -59,7 +59,6 @@ end
     GGUF_METADATA_VALUE_TYPE_FLOAT64 = 12
 end
 
-# 描述文件中大多数张量类型的枚举值
 @enum FILE_TYPE begin
     ALL_F32 = 0
     MOSTLY_F16 = 1
@@ -203,6 +202,10 @@ function read_gguf_header(file::IOStream)
             println("tokenizer.ggml.token_type:", length(value), ",", value[1].value, ",", value[2].value, ",", value[4].value, ",", value[6].value, ",", value[8].value)
         elseif key.string == "tokenizer.ggml.tokens"
             println("tokenizer.ggml.tokens:", length(value), ",", value[1].value, value[2].value, ",", value[4].value, ",", value[6].value, ",", value[8].value)
+        elseif key.string == "tokenizer.ggml.bos_token_id"
+            println("tokenizer.ggml.bos_token_id:", value)
+        elseif key.string == "tokenizer.ggml.eos_token_id"
+            println("tokenizer.ggml.eos_token_id:", value)
         end
 
         gguf_value = GGUFMetadataValue(value_type, value_len, value)
@@ -238,8 +241,10 @@ function read_gguf_tokenizer(header)
         score = scores[i].value
         type = token_types[i].value   # type: 1,2,3,6
 
-        # if i in [36, 1,2,3,4,5]   # i in [36, 2, 3,4,5]  word == "▁"
-        #     println(word, ", ", score, ", ", i, ", ", type,"===============")  # type: 1,3,6
+        word = replace(word, "▁"=>" ")
+        # println(i,  ", ", word, ", score:", score, ", type:", type,"===============")
+        # if i in [36, 1,2,3,4,5,32,36]   # i in [36, 2, 3,4,5]  word == "▁"
+        #     println(i,  ", ", word, ", score:", score, ", type:", type,"===============")  # type: 1,3,6
         # end
         id_to_token[i] = word
         token_scores[i] = score
@@ -259,7 +264,6 @@ function read_gguf_tensor(tensor_type::GGML_TYPE, size::Tuple, file::IOStream)
         size = (size[1] ÷ QK_K, size[2:end]...)
         tensor = Array{block_q4_K,N}(undef, size)
     elseif tensor_type == GGML_TYPE_Q5_K
-        println("GGML_TYPE_Q5_K, not implementation.")
         @assert size[1] % QK_K == 0
         size = (size[1] ÷ QK_K, size[2:end]...)
         tensor = Array{block_q5_K,N}(undef, size)
@@ -320,17 +324,16 @@ function TransformerLayerWeights_1(ggml_dict::Dict{String,Any}, layer_index::Int
         w2             = ggml_dict["blk.$(layer_index-1).ffn_down.weight"],
         w3             = ggml_dict["blk.$(layer_index-1).ffn_gate.weight"],
         )
-
     return layer_weight
 end
 
 function TransformerWeights_1(ggml_dict::Dict{String,Any}, layer_count::Int)
     # println(keys(ggml_dict), layer_count)  # 32
-    # layers = [TransformerLayerWeights_1(ggml_dict, 1)]  # 为了指定[]的类型, 所以这里先指定一个元素. 但是这里不一定是这个固定的类型
+    # layers = [TransformerLayerWeights_1(ggml_dict, 1)]
     layers = Vector{TransformerLayerWeights_gguf}(undef, layer_count)
 
     for i in 1:layer_count
-        push!(layers, TransformerLayerWeights_1(ggml_dict, i))
+        layers[i] = TransformerLayerWeights_1(ggml_dict, i)
     end
 
     return TransformerWeights(;
@@ -364,7 +367,7 @@ function load_gguf_model(filename::AbstractString)
 
         tokenizer = read_gguf_tokenizer(header)
     
-        # 读取 tensor_infos
+        # read tensor_infos
         for i in 1:header.tensor_count
             key_len = read(file, UInt64)
             key_str = String(read(file, key_len))
@@ -381,7 +384,7 @@ function load_gguf_model(filename::AbstractString)
             push!(tensor_infos, tensor_info)
         end
        
-        # 读取 tensor_data
+        # read tensor_data
         tensor_dict = read_gguf_tensor_dict(file; tensor_infos)
 
     end
@@ -396,9 +399,8 @@ function load_gguf_model(filename::AbstractString)
     head_count = header.metadata_kv[8].value.value
     head_count_kv = header.metadata_kv[9].value.value
     n_vocab = length(header.metadata_kv[14].value.value)
-    # println(context_length, ", ", block_count, ", ", feed_forward_length)
-
-    weights = TransformerWeights_1(tensor_dict, Int(block_count))  # Need to implement block_q5_K
+    # println(n_vocab)
+    weights = TransformerWeights_1(tensor_dict, Int(block_count))
 
     config = ModelConfig(;
         dim         = embedding_length,
