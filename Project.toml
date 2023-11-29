@@ -6,6 +6,7 @@ version = "0.1.0"
 [deps]
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Llama = "882c185a-eef0-4636-aa0b-94c4dba13695"
 LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"

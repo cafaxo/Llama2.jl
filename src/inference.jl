@@ -192,7 +192,7 @@ end
 
     head_size = dim ÷ n_heads
 
-    # copy the token embedding into x
+    # copy the token embedding into x. x = dequantize!(token_embedding)
     dequantize!(x, weights.token_embedding_table[:, token])
 
     # forward all the layers
@@ -200,11 +200,11 @@ end
         w = weights.layers[l]
         kv = s.kvcache_layers[l]
 
-        # attention rmsnorm
+        # attention pre rmsnorm
         rmsnorm!(s.xb, x, w.rms_att_weight)
 
         # qkv matmuls for this position
-        matmul!(s.q, w.wq, s.xb)
+        matmul!(s.q, w.wq, s.xb)  # q .= wq' * x
         matmul!(s.k, w.wk, s.xb)
         matmul!(s.v, w.wv, s.xb)
 
@@ -223,7 +223,7 @@ end
         att = reshape(s.att[1:(n_heads*pos)], pos, n_heads)
 
         # multihead attention
-        attention_weights!(att, kv.key_cache, q)
+        attention_weights!(att, kv.key_cache, q)  # att_w = q * k
 
         att ./= sqrt(Float32(head_size))
 
@@ -235,10 +235,10 @@ end
         xb = reshape(s.xb, head_size, n_heads)
 
         # weighted sum of the values
-        combine_values!(xb, kv.value_cache, att)
+        combine_values!(xb, kv.value_cache, att)  # att = softmax(att_w) * v, xb = concat(att_list)
 
-        # final matmul to get the output of the attention
-        matmul!(s.xb2, w.wo, s.xb)
+        # final matmul to get the output of the multi-head attention
+        matmul!(s.xb2, w.wo, s.xb)   # xb2 = wo * xb
 
         # residual connection back into x
         x .+= s.xb2
@@ -247,18 +247,16 @@ end
         rmsnorm!(s.xb, x, w.rms_ffn_weight)
 
         # Now for FFN in PyTorch we have: self.w2(F.silu(self.w1(x)) * self.w3(x))
-        # first calculate self.w1(x) and self.w3(x)
+        # 1.  calculate self.w1(x) and self.w3(x)
         matmul!(s.hb, w.w1, s.xb)
         matmul!(s.hb2, w.w3, s.xb)
-
-        # F.silu silu(x)=x*σ(x),where σ(x) is the logistic sigmoid
+        # 2. F.silu silu(x)=x*σ(x),where σ(x) is the logistic sigmoid
         for i in 1:hidden_dim
             s.hb[i] = s.hb[i] * (1f0 / (1f0 + exp(-s.hb[i])))
         end
-
+        # 3. F.silu(self.w1(x)) * self.w3(x)
         s.hb .*= s.hb2
-
-        # final matmul to get the output of the ffn
+        # 4. matmul to get the output of the ffn. self.w2(hb)
         matmul!(s.xb, w.w2, s.hb)
 
         # residual connection

@@ -60,6 +60,7 @@ end
 end
 
 @enum FILE_TYPE begin
+    # Q:quant, K:K-quant, S:single, M:multi/mixture
     ALL_F32 = 0
     MOSTLY_F16 = 1
     MOSTLY_Q4_0 = 2
@@ -72,12 +73,12 @@ end
     MOSTLY_Q5_1 = 9
     MOSTLY_Q2_K = 10
     MOSTLY_Q3_K_S = 11
-    MOSTLY_Q3_K_M = 12
+    MOSTLY_Q3_K_M = 12  # Q3_K
     MOSTLY_Q3_K_L = 13
     MOSTLY_Q4_K_S = 14
-    MOSTLY_Q4_K_M = 15
+    MOSTLY_Q4_K_M = 15  # Q4_K
     MOSTLY_Q5_K_S = 16
-    MOSTLY_Q5_K_M = 17
+    MOSTLY_Q5_K_M = 17  # Q5_K
     MOSTLY_Q6_K = 18
 end
 

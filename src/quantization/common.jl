@@ -1,10 +1,36 @@
 const QK_K = 256
 
+# 2-bit quantization
+# weight is represented as x = a * q + b
+# 16 blocks of 16 elements each
+# Effectively 2.5625 bits per weight
+struct block_q2_K
+    scales::NTuple{QK_K÷16,UInt8}  # scales and mins, quantized with 4 bits
+    qs::NTuple{QK_K÷4,UInt8}       # quants
+    d::Float16                     # super-block scale for quantized scales
+    dmin::Float16                  # super-block scale for quantized mins
+end
+
+# 3-bit quantization
+# weight is represented as x = a * q
+# 16 blocks of 16 elements each
+# Effectively 3.4375 bits per weight
+struct block_q3_K
+    hmask::NTuple{QK_K÷8,UInt8}    # quants - high bit
+    qs::NTuple{QK_K÷4,UInt8}       # quants - low 2 bits
+    scales::NTuple{12,UInt8}       # scales, quantized with 6 bits
+    d::Float16                     # super-block scale
+end
+
+# 4-bit quantization
+# 8 blocks of 32 elements each
+# weight is represented as x = a * q + b
+# Effectively 4.5 bits per weight
 struct block_q4_K
-    d::Float16               # super-block scales/mins
+    d::Float16                     # super-block scales/mins
     dmin::Float16
-    scales::NTuple{12,UInt8} # 4-bit block scales/mins
-    qs::NTuple{QK_K÷2,UInt8} # 4-bit quants
+    scales::NTuple{12,UInt8}       # 4-bit block scales/mins
+    qs::NTuple{QK_K÷2,UInt8}       # 4-bit quants
 end
 
 # 5-bit quantization
@@ -15,7 +41,7 @@ struct block_q5_K
     d::Float16                    # super-block scale for quantized scales
     dmin::Float16                 # super-block scale for quantized mins
     scales::NTuple{12,UInt8}      # 8-bit block scales
-    qh::NTuple{QK_K÷8,UInt8}      # quants, high bit
+    qh::NTuple{QK_K÷8,UInt8}      # quants, high 1 bit
     qs::NTuple{QK_K÷2,UInt8}      # quants, low 4 bits
 end
 
@@ -33,7 +59,7 @@ end
 # This is only used for intermediate quantization and dot products
 struct block_q8_K
     d::Float32                   # delta
-    qs::NTuple{QK_K,Int8}        # quants
+    qs::NTuple{QK_K,Int8}        # quants, 8 bits
     bsums::NTuple{QK_K÷16,Int16} # sum of quants in groups of 16
 end
 
@@ -74,4 +100,4 @@ end
     return out[]
 end
 
-# https://github.com/ggerganov/llama.cpp/blob/master/ggml-quants.h
+# https:#github.com/ggerganov/llama.cpp/blob/master/ggml-quants.h
