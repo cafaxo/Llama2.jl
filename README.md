@@ -13,7 +13,7 @@ pkg> add https://github.com/cafaxo/Llama2.jl
 
 We currently support two model formats:
 - Andrej Karpathy's llama2.c format
-- A subset of the GGML format (currently only the `q4_K_S` variant)
+- A subset of the GGUF format (currently only the `q4_K_S` variant of Llama 2 models are tested)
 
 The llama2.c models can be found at https://huggingface.co/karpathy/tinyllamas.
 With these models, the [tokenizer.bin](https://github.com/karpathy/llama2.c/raw/b4bb47bb7baf0a5fb98a131d80b4e1a84ad72597/tokenizer.bin) file is also required.
@@ -38,16 +38,16 @@ Tim was sad. He missed his car. He went home. His mom saw him. She said, "Don't 
 achieved tok/s: 282.80
 ```
 
-A compatible Llama2 7B model can be downloaded from https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGML.
+A compatible Llama2 7B model can be downloaded from https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGUF.
 
-- **Only the q4_K_S variant is supported.**
+- **Only the q4_K_S variant is tested.**
 - **Launch Julia with `julia -t auto` for better performance (multithreading)**
 
 Here is an output sample:
 ```julia
 julia> using Llama2
 
-julia> model = load_ggml_model("llama-2-7b-chat.ggmlv3.q4_K_S.bin");
+julia> model = load_gguf_model("llama-2-7b-chat.Q4_K_S.gguf");
 
 julia> sample(model, "The Julia programming language is")
 The Julia programming language is an innovative language for technical computing and scientific research.

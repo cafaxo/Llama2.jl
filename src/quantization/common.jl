@@ -1,10 +1,26 @@
 const QK_K = 256
 
+# 4-bit quantization
+# 8 blocks of 32 elements each
+# weight is represented as x = a * q + b
+# Effectively 4.5 bits per weight
 struct block_q4_K
     d::Float16               # super-block scales/mins
     dmin::Float16
     scales::NTuple{12,UInt8} # 4-bit block scales/mins
     qs::NTuple{QK_K÷2,UInt8} # 4-bit quants
+end
+
+# 5-bit quantization
+# 8 blocks of 32 elements each
+# weight is represented as x = a * q + b
+# Effectively 5.5 bits per weight
+struct block_q5_K
+    d::Float16                    # super-block scale for quantized scales
+    dmin::Float16                 # super-block scale for quantized mins
+    scales::NTuple{12,UInt8}      # 8-bit block scales
+    qh::NTuple{QK_K÷8,UInt8}      # quants, high 1 bit
+    qs::NTuple{QK_K÷2,UInt8}      # quants, low 4 bits
 end
 
 # 6-bit quantization

@@ -20,33 +20,33 @@ function Base.show(io::IO, mime::MIME"text/plain", config::ModelConfig)
     print(io, ")")
 end
 
-@kwdef struct TransformerLayerWeights{Q}
+@kwdef struct TransformerLayerWeights
     # weights for rmsnorms
     rms_att_weight::Vector{Float32} # (dim,)
     rms_ffn_weight::Vector{Float32} # (dim,)
     # weights for matmuls
-    wq::Matrix{Q} # (dim, dim)
-    wk::Matrix{Q} # (dim, dim)
-    wv::Matrix{Q} # (dim, dim)
-    wo::Matrix{Q} # (dim, dim)
+    wq::Matrix # (dim, dim)
+    wk::Matrix # (dim, dim)
+    wv::Matrix # (dim, dim)
+    wo::Matrix # (dim, dim)
     # weights for ffn
-    w1::Matrix{Q} # (dim, hidden_dim)
-    w2::Matrix{Q} # (hidden_dim, dim)
-    w3::Matrix{Q} # (dim, hidden_dim)
+    w1::Matrix # (dim, hidden_dim)
+    w2::Matrix # (hidden_dim, dim)
+    w3::Matrix # (dim, hidden_dim)
 end
 
-@kwdef struct TransformerWeights{Q,OW}
-    token_embedding_table::Matrix{Q} # (dim, vocab_size)
-    layers::Vector{TransformerLayerWeights{Q}}
+@kwdef struct TransformerWeights
+    token_embedding_table::Matrix # (dim, vocab_size)
+    layers::Vector{TransformerLayerWeights}
     # final rmsnorm
     rms_final_weight::Vector{Float32} # (dim,)
-    output_weight::Matrix{OW} # (dim, vocab_size)
+    output_weight::Matrix # (dim, vocab_size)
 end
 
-struct LanguageModel{TOK<:Tokenizer,W<:TransformerWeights}
+struct LanguageModel{TOK<:Tokenizer}
     config::ModelConfig
     tokenizer::TOK
-    weights::W
+    weights::TransformerWeights
 end
 
 function Base.show(io::IO, mime::MIME"text/plain", model::LanguageModel)
@@ -98,7 +98,7 @@ RunState(c::ModelConfig) = RunState(;
 function rmsnorm!(o, x, weight)
     ss = dot(x, x)
     ss /= length(x)
-    ss += 1f-5
+    ss += 1f-6
     ss = 1f0 / sqrt(ss)
     # normalize and scale
     o .= weight .* (ss .* x)

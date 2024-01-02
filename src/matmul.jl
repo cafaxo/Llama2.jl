@@ -14,7 +14,7 @@ function matmul!(
         y::AbstractVector{Float32},
         A::AbstractMatrix{T},
         x::AbstractVector{Float32},
-    ) where {T<:Union{block_q4_K,block_q6_K}}
+    ) where {T<:Union{block_q4_K,block_q5_K,block_q6_K}}
 
     # FIXME: preallocate this
     x = quantize(block_q8_K, x)

@@ -65,6 +65,76 @@ function LinearAlgebra.dot(x::AbstractVector{block_q4_K}, y::AbstractVector{bloc
     return sumf
 end
 
+function LinearAlgebra.dot(x::AbstractVector{block_q5_K}, y::AbstractVector{block_q8_K})
+    @assert length(x) == length(y)
+    nb = length(x)
+
+    sumf = 0f0
+
+    GC.@preserve x y begin
+    @inbounds for i in 1:nb
+        yi_d = unsafe_load(unsafe_pointer_to_field(y, i, :d))
+        xi_d = unsafe_load(unsafe_pointer_to_field(x, i, :d))
+        xi_dmin = unsafe_load(unsafe_pointer_to_field(x, i, :dmin))
+        yi_bsums = unsafe_pointer_to_field(y, i, :bsums)
+
+        d = yi_d * Float32(xi_d)
+        dmin = yi_d * Float32(xi_dmin)
+
+        q8sums = vpaddq(vload(Vec{8,Int16}, yi_bsums), vload(Vec{8,Int16}, yi_bsums + 8*sizeof(Int16)))
+
+        xi_scales = convert(Ptr{UInt32}, unsafe_pointer_to_field(x, i, :scales))
+        utmp0, utmp1, utmp2 = unsafe_load(xi_scales, 1), unsafe_load(xi_scales, 2), unsafe_load(xi_scales, 3)
+
+        kmask1 = 0x3f3f3f3f
+        kmask2 = 0x0f0f0f0f
+        kmask3 = 0x03030303
+
+        mins8 = Vec((utmp1 & kmask1, ((utmp2 >> 4) & kmask2) | (((utmp1 >> 6) & kmask3) << 4)))
+        utmp1 = (utmp2 & kmask2) | (((utmp0 >> 6) & kmask3) << 4)
+        utmp0 &= kmask1
+
+        mins = reinterpret(Vec{8,Int16}, Vec{8,UInt16}(reinterpret(Vec{8,UInt8}, mins8)))
+
+        sumf -= dmin * sum(vwidemul(q8sums, mins))
+
+        scales = reinterpret_nonprimitive(NTuple{8,UInt8}, (utmp0, utmp1))
+
+        q5 = unsafe_pointer_to_field(x, i, :qs)
+        qh = unsafe_pointer_to_field(x, i, :qh)
+        q8 = unsafe_pointer_to_field(y, i, :qs)
+
+        qhbits = vload(Vec{32,UInt8}, qh)
+
+        sumi = Int32(0)
+
+        for j in 1:(QK_K÷64)
+            q5bits = vload(Vec{32,UInt8}, q5)
+            q5 += 32
+
+            q8bytes0 = vload(Vec{32,Int8}, q8)
+            q8bytes1 = vload(Vec{32,Int8}, q8 + 16*2)
+            q8 += 64
+
+            q5h0 = (qhbits & 0x1) << 4
+            q5h1 = (qhbits & 0x2) << 3
+
+            qhbits = qhbits >> 2
+
+            q5bytes0 = reinterpret(Vec{32,Int8}, (q5bits & 0x0f) | q5h0)
+            q5bytes1 = reinterpret(Vec{32,Int8}, (q5bits >> 4) | q5h1)
+
+            sumi += widemul(sum(vwidemul(q5bytes0, q8bytes0)), scales[2*(j-1)+1])
+            sumi += widemul(sum(vwidemul(q5bytes1, q8bytes1)), scales[2*(j-1)+2])
+        end
+
+        sumf += d * sumi
+    end
+    end
+
+    return sumf
+end
+
 function LinearAlgebra.dot(x::AbstractVector{block_q6_K}, y::AbstractVector{block_q8_K})
     @assert length(x) == length(y)
     nb = length(x)
