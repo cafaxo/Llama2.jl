@@ -189,6 +189,7 @@ function read_ggml_tensor(tensor_type::GGML_TYPE, size, file::IOStream)
 end
 
 function load_gguf_model(filename::AbstractString)
+    time = time_ns()
     header = nothing
     tensor_dict = nothing
 
@@ -245,5 +246,6 @@ function load_gguf_model(filename::AbstractString)
 
     weights = TransformerWeights(tensor_dict, Int(header.metadata_kv["llama.block_count"]))
 
+    @info "Loaded model in $((time_ns() - time) / 1e9) seconds"
     return LanguageModel(config, tokenizer, weights)
 end

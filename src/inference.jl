@@ -8,7 +8,7 @@
     seq_len::Int    # max sequence length
 end
 
-function Base.show(io::IO, mime::MIME"text/plain", config::ModelConfig)
+function Base.show(io::IO, _::MIME"text/plain", config::ModelConfig)
     println(io, "ModelConfig(")
     println(io, "  dim         = ", config.dim, ",")
     println(io, "  hidden_dim  = ", config.hidden_dim, ",")
@@ -260,13 +260,14 @@ end
 end
 
 function sample(
-        model::LanguageModel,
-        prompt::String = "";
-        temperature::Float32 = 0.9f0,
-        stop_on_special_token = true,
-        max_seq_len = typemax(Int),
-        bos_token = true,
-    )
+    model::LanguageModel,
+    prompt::String = "";
+    temperature::Float32 = 0.9f0,
+    stop_on_special_token = true,
+    max_seq_len = typemax(Int),
+    bos_token = true,
+    io::IO = stdout
+)
 
     if !bos_token && isempty(prompt)
         error("Prompt cannot be empty if bos_token = false")
@@ -274,11 +275,23 @@ function sample(
 
     (; config, weights, tokenizer) = model
 
+    token_time_start = time_ns()
     prompt_tokens = encode(prompt, tokenizer)
+    token_time_end = time_ns()
+
+    @info begin
+        total_time_ns = (token_time_end - token_time_start)
+        tok_per_ns = length(prompt_tokens) / total_time_ns
+        ns_per_tok = total_time_ns / length(prompt_tokens)
+
+        "Tokenization took $(round(total_time_ns / 10^6; sigdigits=3)) ms, \
+        achieved $(round(tok_per_ns * 10^9; sigdigits=3)) tok/s \
+        (or $(round(ns_per_tok / 10^6; sigdigits=3)) ms/tok)"
+    end
 
     state = RunState(config)
 
-    time_start = time_ns()
+    transform_time_start = time_ns()
 
     bos_token_id = 2 # beginning of sentence token id
     eos_token_id = 3 # end of sentence token id
@@ -294,7 +307,8 @@ function sample(
     token = prompt_tokens[1]
     generated_seq_len = 0
 
-    for pos in 1:min(config.seq_len, max_seq_len)
+    iterations = min(config.seq_len, max_seq_len)
+    for pos in 1:iterations
         # forward the transformer to get logits for the next token
         transformer!(token, pos, config, state, weights)
         generated_seq_len += 1
@@ -327,17 +341,27 @@ function sample(
         #    next_str = next_str[2:end]
         #end
 
-        print(next_str)
+        print(io, next_str)
 
         # advance forward
         token = next
+
     end
 
-    println()
-
+    println(io)
     # report our achieved tok/s
     time_end = time_ns()
-    @printf "-------\nachieved tok/s: %.2f\n" generated_seq_len / (time_end - time_start) * 1e9
+
+    @info begin
+        total_time = (time_end - transform_time_start)
+        ns_per_tok = total_time / generated_seq_len
+        tok_per_ns = generated_seq_len / total_time
+
+        "Generation took $(round(total_time / 10^9; sigdigits=3)) s, \
+        achieved $(round(tok_per_ns * 10^9; sigdigits=3)) tok/s \
+        (or $(round(ns_per_tok / 10^6; sigdigits=3)) ms/tok)"
+    end
+
 
     return nothing
 end
