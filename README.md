@@ -1,6 +1,6 @@
 # Llama2.jl
 
-Llama2.jl provides simple code for inference and training of llama2-based language models.
+Llama2.jl supports inference and training of Llama-style language models.
 
 ## Installation
 
@@ -11,11 +11,31 @@ pkg> add https://github.com/cafaxo/Llama2.jl
 
 ## Usage
 
-We currently support two model formats:
+We currently support:
+- A subset of the GGUF format
 - Andrej Karpathy's llama2.c format
-- A subset of the GGUF format (currently only the `q4_K_S` variant of Llama 2 models are tested)
 
-The llama2.c models can be found at https://huggingface.co/karpathy/tinyllamas.
+Experimental Llama 3 support is available:
+
+```julia
+julia> model = load_gguf_model("Meta-Llama-3-8B.Q4_K_S.gguf")
+LanguageModel(
+ModelConfig(
+  dim            = 4096,
+  hidden_dim     = 14336,
+  n_layers       = 32,
+  n_heads        = 32,
+  n_kv_heads     = 8,
+  vocab_size     = 128256,
+  seq_len        = 512,
+  rope_freq_base = 500000.0,
+))
+
+julia> sample(model, "The Julia programming language is"; temperature=0.0f0)
+ The Julia programming language is a high-level, high-performance dynamic language for technical computing, with syntax that is familiar to users of other technical computing environments. It provides a sophisticated compiler, distributed parallel execution, numerical accuracy, and MATLABÂ®- and R-compatibility. It is open-source and available on 32- and 64-bit x86-based operating systems (Windows, Linux, and Mac OS X). Julia is sponsored by the Julia Computing Inc. company.
+```
+
+Andrej Karpathy's llama2.c models can be found at https://huggingface.co/karpathy/tinyllamas.
 With these models, the [tokenizer.bin](https://github.com/karpathy/llama2.c/raw/b4bb47bb7baf0a5fb98a131d80b4e1a84ad72597/tokenizer.bin) file is also required.
 
 Here is an output sample from the 42M tinyllama model:
@@ -38,25 +58,9 @@ Tim was sad. He missed his car. He went home. His mom saw him. She said, "Don't 
 achieved tok/s: 282.80
 ```
 
-A compatible Llama2 7B model can be downloaded from https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGUF.
-
-- **Only the q4_K_S variant is tested.**
-- **Launch Julia with `julia -t auto` for better performance (multithreading)**
-
-Here is an output sample:
-```julia
-julia> using Llama2
-
-julia> model = load_gguf_model("llama-2-7b-chat.Q4_K_S.gguf");
-
-julia> sample(model, "The Julia programming language is")
-The Julia programming language is an innovative language for technical computing and scientific research.
-```
-Thanks to weight quantization, a machine with 8GB RAM is sufficient to run this.
-
 ## Experimental training support
 
-Llama2.jl can now train tiny llama2 models on the CPU:
+Llama2.jl can train very small Llama-style models on the CPU:
 ```julia
 julia> using Llama2
 
