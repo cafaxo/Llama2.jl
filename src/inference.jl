@@ -88,11 +88,11 @@ RunState(c::ModelConfig) = RunState(;
     hb             = zeros(Float32, c.hidden_dim),
     hb2            = zeros(Float32, c.hidden_dim),
     q              = zeros(Float32, c.dim),
-    k              = zeros(Float32, c.dim),
-    v              = zeros(Float32, c.dim),
+    k              = zeros(Float32, (c.dim ÷ c.n_heads) * c.n_kv_heads),
+    v              = zeros(Float32, (c.dim ÷ c.n_heads) * c.n_kv_heads),
     att            = zeros(Float32, c.seq_len * c.n_heads),
     logits         = zeros(Float32, c.vocab_size),
-    kvcache_layers = [KVCache(c.dim ÷ c.n_heads, c.n_heads, c.seq_len) for _ in 1:c.n_layers],
+    kvcache_layers = [KVCache(c.dim ÷ c.n_heads, c.n_kv_heads, c.seq_len) for _ in 1:c.n_layers],
 )
 
 function rmsnorm!(o, x, weight)
@@ -134,15 +134,22 @@ function softmax!(x)
 end
 
 function attention_weights!(att, key_cache, q)
-    @inbounds @fastmath for h in axes(att, 2)
-        for t in axes(att, 1)
+    n_gqa = size(q, 2) ÷ size(key_cache, 2)
+    key_h = 1
+
+    for h in axes(att, 2)
+        @inbounds @fastmath for t in axes(att, 1)
             s = 0f0
 
             for i in axes(q, 1)
-                s += q[i, h] * key_cache[i, h, t]
+                s += q[i, h] * key_cache[i, key_h, t]
             end
 
             att[t, h] = s
+        end
+
+        if h % n_gqa == 0
+            key_h += 1
         end
     end
 
@@ -150,15 +157,22 @@ function attention_weights!(att, key_cache, q)
 end
 
 function combine_values!(xb, value_cache, att)
-    @inbounds @fastmath for h in axes(xb, 2)
-        for i in axes(xb, 1)
+    n_gqa = size(att, 2) ÷ size(value_cache, 3)
+    value_h = 1
+
+    for h in axes(xb, 2)
+        @inbounds @fastmath for i in axes(xb, 1)
             s = 0f0
 
             for t in axes(att, 1)
-                s += att[t, h] * value_cache[t, i, h]
+                s += att[t, h] * value_cache[t, i, value_h]
             end
 
             xb[i, h] = s
+        end
+
+        if h % n_gqa == 0
+            value_h += 1
         end
     end
 
@@ -173,6 +187,7 @@ end
         hidden_dim,
         n_layers,
         n_heads,
+        n_kv_heads,
     ) = config
 
     head_size = dim ÷ n_heads
@@ -194,7 +209,7 @@ end
         matmul!(s.v, w.wv, s.xb)
 
         q = reshape(s.q, head_size, n_heads)
-        k = reshape(s.k, head_size, n_heads)
+        k = reshape(s.k, head_size, n_kv_heads)
 
         # apply RoPE rotation to the q and k vectors for each head
         rope!(q, pos)
