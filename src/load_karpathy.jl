@@ -6,6 +6,7 @@ read_karpathy_config(f::IOStream) = ModelConfig(
     read(f, Int32),
     read(f, Int32),
     read(f, Int32),
+    10000.0f0,
 )
 
 TransformerLayerWeights(p::ModelConfig) = TransformerLayerWeights(;
@@ -72,7 +73,7 @@ function load_karpathy_tokenizer(filename::AbstractString, vocab_size::Int)
         end
     end
 
-    return BPETokenizer(id_to_token, token_to_id, token_scores)
+    return BPETokenizer(id_to_token, token_to_id, token_scores, 2, 3)
 end
 
 function load_karpathy_model(
