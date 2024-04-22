@@ -4,6 +4,8 @@ struct BPETokenizer <: Tokenizer
     id_to_token::Vector{String}
     token_to_id::Dict{String,Int}
     token_scores::Vector{Float32}
+    bos_token_id::Int
+    eos_token_id::Int
 end
 
 function encode(text::AbstractString, tokenizer::BPETokenizer; pad_input=true)
@@ -55,14 +57,26 @@ function encode(text::AbstractString, tokenizer::BPETokenizer; pad_input=true)
 end
 
 struct CharTokenizer <: Tokenizer
-    id_to_token::Vector{Char}
-    token_to_id::Dict{Char,Int}
+    id_to_token::Vector{String}
+    token_to_id::Dict{String,Int}
+    bos_token_id::Int
+    eos_token_id::Int
 end
 
 function CharTokenizer(text::AbstractString)
-    id_to_token = sort(collect(Set(text)))
+    id_to_token = string.(sort(collect(Set(text))))
+
+    push!(id_to_token, "<s>")
+    push!(id_to_token, "</s>")
+
     token_to_id = Dict(token => i for (i, token) in enumerate(id_to_token))
-    return CharTokenizer(id_to_token, token_to_id)
+
+    return CharTokenizer(
+        id_to_token,
+        token_to_id,
+        length(id_to_token) - 1,
+        length(id_to_token),
+    )
 end
 
 function encode(text::AbstractString, tokenizer::CharTokenizer)

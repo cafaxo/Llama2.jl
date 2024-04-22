@@ -225,6 +225,22 @@ function read_ggml_tensor(tensor_type::GGML_TYPE, size, file::IOStream, mmap)
     return _read_ggml_tensor(tensor_type, size, file)
 end
 
+# this undoes whatever https://github.com/openai/gpt-2/blob/master/src/encoder.py does
+function gpt2_decoder()
+    bs = collect(Int('!'):Int('~')) ∪ collect(Int('¡'):Int('¬')) ∪ collect(Int('®'):Int('ÿ'))
+    cs = copy(bs)
+    n = 0
+    for b in 0:255
+        if b ∉ bs
+            push!(bs, b)
+            push!(cs, 2^8 + n)
+            n += 1
+        end
+    end
+    
+    return Dict(Char.(cs) .=> Char.(bs))
+end
+
 function load_gguf_model(filename::AbstractString; mmap=true)
     header = nothing
     tensor_dict = nothing
@@ -250,25 +266,45 @@ function load_gguf_model(filename::AbstractString; mmap=true)
     # read tokenizer
     id_to_token = metadata_kv["tokenizer.ggml.tokens"]
     token_types = metadata_kv["tokenizer.ggml.token_type"]
+
+    tokenizer_model = metadata_kv["tokenizer.ggml.model"]
     
-    for i in 1:length(id_to_token)
-        token_type = LLAMA_TOKEN_TYPE(token_types[i])
+    if tokenizer_model == "llama"
+        for i in 1:length(id_to_token)
+            token_type = LLAMA_TOKEN_TYPE(token_types[i])
 
-        # fix whitespace in normal tokens TODO: figure out why llama.cpp does this
-        if token_type == LLAMA_TOKEN_TYPE_NORMAL
-            id_to_token[i] = replace(id_to_token[i], "\xe2\x96\x81" => " ")
-        end
+            # fix whitespace in normal tokens TODO: figure out why llama.cpp does this
+            if token_type == LLAMA_TOKEN_TYPE_NORMAL
+                id_to_token[i] = replace(id_to_token[i], "\xe2\x96\x81" => " ")
+            end
 
-        # fix byte tokens
-        if token_type == LLAMA_TOKEN_TYPE_BYTE
-            id_to_token[i] = String([parse(UInt8, id_to_token[i][2:end-1])])
+            # fix byte tokens
+            if token_type == LLAMA_TOKEN_TYPE_BYTE
+                id_to_token[i] = String([parse(UInt8, id_to_token[i][2:end-1])])
+            end
         end
+    elseif tokenizer_model == "gpt2"
+        gpt2_decode_dict = gpt2_decoder()
+
+        for i in 1:length(id_to_token)
+            token_type = LLAMA_TOKEN_TYPE(token_types[i])
+
+            if token_type == LLAMA_TOKEN_TYPE_NORMAL
+                id_to_token[i] = String([gpt2_decode_dict[c] for c in id_to_token[i]])
+            end
+        end
+    else
+        error("unsupported tokenizer model: $(tokenizer_model)")
     end
 
     token_to_id = Dict{String,Int}(token => id for (id, token) in enumerate(id_to_token))
-    token_scores = metadata_kv["tokenizer.ggml.scores"]
-    # TODO: also store tokenizer.ggml.bos_token_id, tokenizer.ggml.eos_token_id in tokenizer
-    tokenizer = BPETokenizer(id_to_token, token_to_id, token_scores)
+    tokenizer = BPETokenizer(
+        id_to_token,
+        token_to_id,
+        metadata_kv["tokenizer.ggml.scores"],
+        metadata_kv["tokenizer.ggml.bos_token_id"] + 1, # convert to one-based indexing
+        metadata_kv["tokenizer.ggml.eos_token_id"] + 1,
+    )
 
     config = ModelConfig(;
         dim            = metadata_kv["llama.embedding_length"],

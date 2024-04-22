@@ -297,11 +297,8 @@ function sample(
 
     time_start = time_ns()
 
-    bos_token_id = 2 # beginning of sentence token id
-    eos_token_id = 3 # end of sentence token id
-
     if bos_token
-        pushfirst!(prompt_tokens, bos_token_id)
+        pushfirst!(prompt_tokens, tokenizer.bos_token_id)
     end
 
     if !bos_token
@@ -333,7 +330,7 @@ function sample(
             end
         end
 
-        if stop_on_special_token && (next == bos_token_id || next == eos_token_id)
+        if stop_on_special_token && (next == tokenizer.bos_token_id || next == tokenizer.eos_token_id)
             break
         end
 
