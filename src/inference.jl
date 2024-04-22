@@ -1,22 +1,24 @@
 @kwdef struct ModelConfig
-    dim::Int        # transformer dimension
-    hidden_dim::Int # for ffn layers
-    n_layers::Int   # number of layers
-    n_heads::Int    # number of query heads
-    n_kv_heads::Int # number of key/value heads (can be < query heads because of multiquery)
-    vocab_size::Int # vocabulary size, usually 256 (byte-level)
-    seq_len::Int    # max sequence length
+    dim::Int                # transformer dimension
+    hidden_dim::Int         # for ffn layers
+    n_layers::Int           # number of layers
+    n_heads::Int            # number of query heads
+    n_kv_heads::Int         # number of key/value heads (can be < query heads because of multiquery)
+    vocab_size::Int         # vocabulary size, usually 256 (byte-level)
+    seq_len::Int            # max sequence length
+    rope_freq_base::Float32
 end
 
 function Base.show(io::IO, mime::MIME"text/plain", config::ModelConfig)
     println(io, "ModelConfig(")
-    println(io, "  dim         = ", config.dim, ",")
-    println(io, "  hidden_dim  = ", config.hidden_dim, ",")
-    println(io, "  n_layers    = ", config.n_layers, ",")
-    println(io, "  n_heads     = ", config.n_heads, ",")
-    println(io, "  n_kv_heads  = ", config.n_kv_heads, ",")
-    println(io, "  vocab_size  = ", config.vocab_size, ",")
-    println(io, "  seq_len     = ", config.seq_len, ",")
+    println(io, "  dim            = ", config.dim, ",")
+    println(io, "  hidden_dim     = ", config.hidden_dim, ",")
+    println(io, "  n_layers       = ", config.n_layers, ",")
+    println(io, "  n_heads        = ", config.n_heads, ",")
+    println(io, "  n_kv_heads     = ", config.n_kv_heads, ",")
+    println(io, "  vocab_size     = ", config.vocab_size, ",")
+    println(io, "  seq_len        = ", config.seq_len, ",")
+    println(io, "  rope_freq_base = ", config.rope_freq_base, ",")
     print(io, ")")
 end
 
@@ -105,11 +107,11 @@ function rmsnorm!(o, x, weight)
     return nothing
 end
 
-function rope!(x::AbstractMatrix{Float32}, pos::Int)
+function rope!(x::AbstractMatrix{Float32}, pos::Int, config::ModelConfig)
     x = reinterpret(ComplexF32, x)
     head_size_div2, n_heads = size(x)
 
-    freq_base = 10000.0f0
+    freq_base = config.rope_freq_base
     freq_scale = 1.0f0
 
     theta_scale = freq_base ^ (-inv(Float32(head_size_div2)))
@@ -212,8 +214,8 @@ end
         k = reshape(s.k, head_size, n_kv_heads)
 
         # apply RoPE rotation to the q and k vectors for each head
-        rope!(q, pos)
-        rope!(k, pos)
+        rope!(q, pos, config)
+        rope!(k, pos, config)
 
         # save key,value at this time step (pos) to our kv cache
         copyto!(kv.key_cache[:, :, pos], s.k)

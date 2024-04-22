@@ -271,13 +271,14 @@ function load_gguf_model(filename::AbstractString; mmap=true)
     tokenizer = BPETokenizer(id_to_token, token_to_id, token_scores)
 
     config = ModelConfig(;
-        dim         = metadata_kv["llama.embedding_length"],
-        hidden_dim  = metadata_kv["llama.feed_forward_length"],
-        n_layers    = metadata_kv["llama.block_count"],
-        n_heads     = metadata_kv["llama.attention.head_count"],
-        n_kv_heads  = metadata_kv["llama.attention.head_count_kv"],
-        vocab_size  = length(id_to_token),
-        seq_len     = 512, # metadata_kv["llama.context_length"],
+        dim            = metadata_kv["llama.embedding_length"],
+        hidden_dim     = metadata_kv["llama.feed_forward_length"],
+        n_layers       = metadata_kv["llama.block_count"],
+        n_heads        = metadata_kv["llama.attention.head_count"],
+        n_kv_heads     = metadata_kv["llama.attention.head_count_kv"],
+        vocab_size     = length(id_to_token),
+        seq_len        = 512, # metadata_kv["llama.context_length"],
+        rope_freq_base = get(metadata_kv, "llama.rope.freq_base", 10000.0f0),
     )
 
     weights = TransformerWeights(tensor_dict, Int(header.metadata_kv["llama.block_count"]))
