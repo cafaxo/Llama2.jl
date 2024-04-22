@@ -4,7 +4,6 @@ using LinearAlgebra
 using StatsBase
 using Printf
 using ProgressMeter
-using SIMD
 using LoopVectorization
 using Random
 using Distributions
