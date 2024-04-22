@@ -210,8 +210,6 @@ function _read_ggml_tensor_mmap(tensor_type::GGML_TYPE, size, file::IOStream)
         error("tensor type $tensor_type not implemented")
     end
 
-    #read!(file, tensor)
-
     seek(file, position(file) + sizeof(tensor))
 
     return tensor
