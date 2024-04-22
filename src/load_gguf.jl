@@ -163,7 +163,7 @@ function align_offset(offset, alignment)
     return offset + (alignment - (offset % alignment)) % alignment
 end
 
-function read_ggml_tensor(tensor_type::GGML_TYPE, size, file::IOStream)
+function _read_ggml_tensor(tensor_type::GGML_TYPE, size, file::IOStream)
     N = length(size)
 
     if tensor_type == GGML_TYPE_F32
@@ -188,7 +188,44 @@ function read_ggml_tensor(tensor_type::GGML_TYPE, size, file::IOStream)
     return tensor
 end
 
-function load_gguf_model(filename::AbstractString)
+function _read_ggml_tensor_mmap(tensor_type::GGML_TYPE, size, file::IOStream)
+    N = length(size)
+
+    if tensor_type == GGML_TYPE_F32
+        size = Tuple(size)
+        tensor = mmap(file, Array{Float32,N}, size)
+    elseif tensor_type == GGML_TYPE_Q4_K
+        @assert size[1] % QK_K == 0
+        size = (size[1] ÷ QK_K, size[2:end]...)
+        tensor = mmap(file, Array{block_q4_K,N}, size)
+    elseif tensor_type == GGML_TYPE_Q5_K
+        @assert size[1] % QK_K == 0
+        size = (size[1] ÷ QK_K, size[2:end]...)
+        tensor = mmap(file, Array{block_q5_K,N}, size)
+    elseif tensor_type == GGML_TYPE_Q6_K
+        @assert size[1] % QK_K == 0
+        size = (size[1] ÷ QK_K, size[2:end]...)
+        tensor = mmap(file, Array{block_q6_K,N}, size)
+    else
+        error("tensor type $tensor_type not implemented")
+    end
+
+    #read!(file, tensor)
+
+    seek(file, position(file) + sizeof(tensor))
+
+    return tensor
+end
+
+function read_ggml_tensor(tensor_type::GGML_TYPE, size, file::IOStream, mmap)
+    if mmap
+        return _read_ggml_tensor_mmap(tensor_type, size, file)
+    end
+
+    return _read_ggml_tensor(tensor_type, size, file)
+end
+
+function load_gguf_model(filename::AbstractString; mmap=true)
     header = nothing
     tensor_dict = nothing
 
@@ -204,7 +241,7 @@ function load_gguf_model(filename::AbstractString)
         # read tensors
         @showprogress desc="Loading model..." for tensor_info in tensor_info_list
             seek(file, pad_offset + tensor_info.offset)
-            tensor_dict[tensor_info.name] = read_ggml_tensor(tensor_info.typ, tensor_info.dimensions, file)
+            tensor_dict[tensor_info.name] = read_ggml_tensor(tensor_info.typ, tensor_info.dimensions, file, mmap)
         end
     end
 

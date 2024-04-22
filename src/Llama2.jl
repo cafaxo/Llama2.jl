@@ -8,6 +8,7 @@ using SIMD
 using LoopVectorization
 using Random
 using Distributions
+using Mmap
 
 export ModelConfig, CharTokenizer, LanguageModel
 export load_gguf_model, load_karpathy_model, encode, sample
