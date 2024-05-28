@@ -201,3 +201,60 @@ function dequantize!(y::AbstractVector{Float32}, x::AbstractVector{block_q4_K})
 
     return y
 end
+# SOME MORE TESTING for the quantize code...
+using CUDA
+function dequantize!(y::CuVector{Float32}, x::CuVector{block_q4_K})
+    nb = length(y) ÷ QK_K
+    threads_per_block = 256  # Or another suitable value based on your GPU
+    blocks = ceil(Int, nb / threads_per_block)
+
+    # @show y[1:5]
+    CUDA.@cuda blocks=blocks threads=threads_per_block cuda_dequantize!(y, x)
+    # @show y[1:5]
+end
+
+function cuda_dequantize!(y, x)
+    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    k = length(y)
+    nb = k ÷ QK_K
+
+    if i <= nb
+        d = x[i].d
+        dmin = x[i].dmin
+        scales = x[i].scales
+        q = x[i].qs
+        for j in 1:(QK_K ÷ 64)
+            sc, m = get_scale_min_k4(2 * (j - 1) + 1, scales)  # This function needs to be adapted for CUDA
+            d1 = d * sc
+            m1 = dmin * m
+
+            sc, m = get_scale_min_k4(2 * (j - 1) + 2, scales)  # This function needs to be adapted for CUDA
+            d2 = d * sc
+            m2 = dmin * m
+
+            for l in 1:32
+                idx1 = QK_K * (i - 1) + 64 * (j - 1) + l
+                idx2 = QK_K * (i - 1) + 64 * (j - 1) + 32 + l
+                if idx1 <= k
+                    y[idx1] = d1 * ((q[32 * (j - 1) + l]) & 0xF) - m1
+                end
+                if idx2 <= k
+                    y[idx2] = d2 * ((q[32 * (j - 1) + l]) >> 4) - m2
+                end
+            end
+        end
+    end
+    return
+end
+# NEW get_scale_min_k4...
+Base.@propagate_inbounds function get_scale_min_k4(j::Int, q::NTuple{12, UInt8})
+    if j <= 4
+        d = q[j] & UInt8(63)
+        m = q[j + 4] & UInt8(63)
+    else
+        d = (q[j+4] & 0xF) | ((q[j-4] >> 6) << 4)
+        m = (q[j+4] >>  4) | ((q[j-0] >> 6) << 4)
+    end
+
+    return d, m
+end

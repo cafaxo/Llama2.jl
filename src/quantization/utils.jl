@@ -52,3 +52,66 @@ function Base.setindex!(mf::MutableField{T,P}, x::T, i::Int) where {T,P}
         unsafe_store!(p, x)
     end
 end
+
+# IDK what this was... some utils...
+function get_int_from_uint8_rev(x8::Vector{UInt8}, i32::Int)
+    # Calculate the starting index in the x8 array based on i32
+    start_idx = sizeof(Int) * i32 + 1  # Julia arrays are 1-indexed
+
+    # Ensure the start index is within the bounds of the x8 array
+    if start_idx + 3 > length(x8)
+        error("Index out of bounds")
+    end
+
+    # Extract two UInt16 values from the x8 array and combine them into a single Int32 value
+    x32 = UInt32(0)
+    x32 |= UInt32(x8[start_idx]) | (UInt32(x8[start_idx + 1]) << 8)
+    x32 |= (UInt32(x8[start_idx + 2]) | (UInt32(x8[start_idx + 3]) << 8)) << 16
+
+    return Int32(x32)  # Convert the UInt32 value to Int32 if necessary
+end
+function get_int_from_int8_aligned_rev(x8::Vector{Int8}, i32::Int)
+    # Calculate the starting index in the x8 array based on i32
+    start_idx = sizeof(Int) * i32 + 1  # Adjust for Julia's 1-based indexing
+
+    # Ensure the start index is within the bounds of the x8 array
+    if start_idx + 3 > length(x8)
+        error("Index out of bounds")
+    end
+
+    # Reconstruct the 32-bit integer from four consecutive 8-bit integers in the array
+    x32 = (Int32(x8[start_idx]) & 0xFF) |
+          ((Int32(x8[start_idx + 1]) & 0xFF) << 8) |
+          ((Int32(x8[start_idx + 2]) & 0xFF) << 16) |
+          ((Int32(x8[start_idx + 3]) & 0xFF) << 24)
+
+    return x32
+end
+function get_int_from_uint8(x8::Vector{UInt8}, i32::Int)
+    # Calculate the byte index in the x8 array based on i32
+    byte_idx = sizeof(Int) * i32 + 1  # Adjust for Julia's 1-based indexing
+
+    # Ensure the byte index is within the bounds of the x8 array
+    if byte_idx + sizeof(Int) - 1 > length(x8)
+        error("Index out of bounds")
+    end
+
+    # Use reinterpret to interpret the selected bytes as Int32
+    x32 = reinterpret(Int32, x8[byte_idx:byte_idx + sizeof(Int32) - 1])[1]
+
+    return x32
+end
+function get_int_from_int8_aligned(x8::Vector{Int8}, i32::Int)
+    # Calculate the byte index in the x8 array based on i32
+    byte_idx = sizeof(Int) * i32 + 1  # Adjust for Julia's 1-based indexing
+
+    # Ensure the byte index is within the bounds of the x8 array
+    if byte_idx + sizeof(Int) - 1 > length(x8)
+        error("Index out of bounds")
+    end
+
+    # Use reinterpret to interpret the selected bytes as Int32
+    x32 = reinterpret(Int32, x8[byte_idx:byte_idx + sizeof(Int32) - 1])[1]
+
+    return x32
+end

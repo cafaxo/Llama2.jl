@@ -180,6 +180,7 @@ function combine_values!(xb, value_cache, att)
 
     return xb
 end
+include("inferenceCUDA.jl")
 
 @views function transformer!(token::Int, pos::Int, config::ModelConfig, s::RunState, weights::TransformerWeights)
     x = s.x
@@ -277,7 +278,7 @@ end
 end
 
 function sample(
-        model::LanguageModel,
+        model::Union{LanguageModel, LanguageModelCUDA},
         prompt::String = "";
         temperature::Float32 = 0.9f0,
         stop_on_special_token = true,
@@ -294,6 +295,7 @@ function sample(
     prompt_tokens = encode(prompt, tokenizer)
 
     state = RunState(config)
+    # state = RunStateCUDA(RunState(config))
 
     time_start = time_ns()
 
