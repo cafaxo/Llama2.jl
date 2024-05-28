@@ -96,6 +96,7 @@ RunState(c::ModelConfig) = RunState(;
     logits         = zeros(Float32, c.vocab_size),
     kvcache_layers = [KVCache(c.dim ÷ c.n_heads, c.n_kv_heads, c.seq_len) for _ in 1:c.n_layers],
 )
+get_run_state(model::LanguageModel) = RunState(model.config)
 
 function rmsnorm!(o, x, weight)
     ss = dot(x, x)
@@ -294,8 +295,7 @@ function sample(
 
     prompt_tokens = encode(prompt, tokenizer)
 
-    state = RunState(config)
-    # state = RunStateCUDA(RunState(config))
+    state = get_run_state(model)
 
     time_start = time_ns()
 

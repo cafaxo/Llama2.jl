@@ -80,6 +80,7 @@ struct LanguageModelCUDA{TOK<:Tokenizer}
   tokenizer::TOK
   weights::TransformerWeightsCUDA
 end
+get_run_state(model::LanguageModelCUDA) = RunStateCUDA(RunState(model.config))
 function to_cuda(llm::LanguageModel)
   return LanguageModelCUDA(
       llm.config, llm.tokenizer, to_cuda(llm.weights)
