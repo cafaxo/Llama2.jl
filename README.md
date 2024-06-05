@@ -18,6 +18,8 @@ We currently support:
 Experimental Llama 3 support is available:
 
 ```julia
+julia> using Llama2
+
 julia> model = load_gguf_model("Meta-Llama-3-8B.Q4_K_S.gguf")
 LanguageModel(
 ModelConfig(
