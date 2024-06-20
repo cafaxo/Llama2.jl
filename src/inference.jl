@@ -284,7 +284,7 @@ function sample(
         max_seq_len = typemax(Int),
         bos_token = true,
     )
-
+    generated_text = ""
     if !bos_token && isempty(prompt)
         error("Prompt cannot be empty if bos_token = false")
     end
@@ -341,7 +341,7 @@ function sample(
         #    next_str = next_str[2:end]
         #end
 
-        print(next_str)
+        generated_text *= next_str  # Concatenate next_str to the generated_text string
 
         # advance forward
         token = next
@@ -353,5 +353,5 @@ function sample(
     time_end = time_ns()
     @printf "-------\nachieved tok/s: %.2f\n" generated_seq_len / (time_end - time_start) * 1e9
 
-    return nothing
+    return generated_text
 end
