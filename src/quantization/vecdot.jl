@@ -109,7 +109,6 @@ function vecdot(x::AbstractVector{block_q6_K}, y::AbstractVector{BlockF16Sums16}
         # for some reason LLVM does not auto-vectorize this code if it is inlined
         # workaround by manually outlining
         isum_mins = _vecdot_hack(x, y, i, d_all)
-        # @show isum_mins
 
         isum = zero(Float32)
 
@@ -127,7 +126,6 @@ function vecdot(x::AbstractVector{block_q6_K}, y::AbstractVector{BlockF16Sums16}
                 q6bytes0 = d_all * reinterpret(Int8, (q6bits0 & 0x0f) | q6h0)
 
                 s1 += q6bytes0 * unsafe_load(q8, k)
-                # i<3 && j<2 && k>14&& @show q6bytes0, s1
             end
 
             q8 += 16 * sizeof(Float16)
@@ -140,11 +138,9 @@ function vecdot(x::AbstractVector{block_q6_K}, y::AbstractVector{BlockF16Sums16}
                 q6bytes1 = d_all * reinterpret(Int8, (q6bits1 & 0x0f) | q6h1)
 
                 s2 += q6bytes1 * unsafe_load(q8, k)
-                # i<3 && j<2 && k>14&& @show q6bytes1, s2
             end
 
             isum += s1 * unsafe_load(scale, 1) + s2 * unsafe_load(scale, 2)
-            # i<3 &&@show isum, s1, s2
             scale += 2
 
             q8 += 16 * sizeof(Float16)
@@ -171,7 +167,6 @@ function vecdot(x::AbstractVector{block_q6_K}, y::AbstractVector{BlockF16Sums16}
                 s2 += q6bytes3 * unsafe_load(q8, k)
             end
 
-            # i<3 &&@show isum, s1, s2
             isum += s1 * unsafe_load(scale, 1) + s2 * unsafe_load(scale, 2)
             scale += 2
 
