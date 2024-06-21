@@ -98,6 +98,9 @@ RunState(c::ModelConfig) = RunState(;
 )
 get_run_state(model::LanguageModel) = RunState(model.config)
 
+# A nicer silu could be? silu(x) = x*σ(x)
+silu(x) = x * (1f0 / (1f0 + exp(-x)))
+
 function rmsnorm!(o, x, weight)
     ss = dot(x, x)
     ss /= length(x)
@@ -135,8 +138,14 @@ function softmax!(x)
     x ./= sum(x)
     return nothing
 end
+@views function softmax_for!(att, n_heads)
+    for h in 1:n_heads
+        # softmax the scores to get attention weights
+        softmax!(att[:, h])
+    end
+end
 
-function attention_weights!(att, key_cache, q)
+function attention_weights!(att, key_cache::Array, q)
     n_gqa = size(q, 2) ÷ size(key_cache, 2)
     key_h = 1
 
@@ -231,10 +240,7 @@ include("inferenceCUDA.jl")
 
         att ./= sqrt(Float32(head_size))
 
-        for h in 1:n_heads
-            # softmax the scores to get attention weights
-            softmax!(att[:, h])
-        end
+        softmax_for!(att, n_heads)
 
         xb = reshape(s.xb, head_size, n_heads)
 
@@ -256,9 +262,7 @@ include("inferenceCUDA.jl")
         matmul!(s.hb2, w.w3, s.xb)
 
         # F.silu silu(x)=x*σ(x),where σ(x) is the logistic sigmoid
-        for i in 1:hidden_dim
-            s.hb[i] = s.hb[i] * (1f0 / (1f0 + exp(-s.hb[i])))
-        end
+        s.hb .= silu.(s.hb)
 
         s.hb .*= s.hb2
 
@@ -328,7 +332,8 @@ function sample(
                 # apply softmax to the logits to get the probabilities for next token
                 softmax!(state.logits)
                 # sample from this distribution to get the next token
-                next = wsample(1:config.vocab_size, state.logits)
+                logits = Array(state.logits) # copy to CPU since wsample is not supported on GPU
+                next = wsample(1:config.vocab_size, logits)
             end
         end
 

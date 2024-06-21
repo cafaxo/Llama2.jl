@@ -12,14 +12,17 @@ using Mmap
 export ModelConfig, CharTokenizer, LanguageModel
 export load_gguf_model, load_karpathy_model, encode, sample
 export train
+export to_cuda
 
 # quantization
 include("quantization/utils.jl")
 include("quantization/common.jl")
 include("quantization/q4.jl")
+include("quantization/q5.jl")
 include("quantization/q6.jl")
 include("quantization/q8.jl")
 include("quantization/vecdot.jl")
+include("quantization/vecdotCUDA.jl")
 
 # inference
 include("tokenizer.jl")
