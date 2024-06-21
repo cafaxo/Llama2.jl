@@ -1,6 +1,4 @@
-using Boilerplate
 using CUDA
-import CUDA.CuArray  # Add this import statement
 
 struct KVCacheCUDA
   key_cache::CuArray{Float32,3}   # (head_size, n_heads, seq_len)
@@ -52,7 +50,6 @@ RunStateCUDA(rs::RunState) = RunStateCUDA(
   w2::CuArray{T2, 2} # (hidden_dim, dim)
   w3::CuArray{T, 2} # (dim, hidden_dim)
 end
-using Boilerplate
 function to_cuda(weights::TransformerLayerWeights)
     return TransformerLayerWeightsCUDA(
         rms_att_weight = cu(weights.rms_att_weight),

@@ -1,5 +1,4 @@
 # matmul! computes y .= A' * x
-using Boilerplate
 function matmul!(
         y::AbstractVector{Float32},
         A::AbstractMatrix{Float32},

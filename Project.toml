@@ -4,7 +4,6 @@ authors = ["Lukas Mayrhofer <lukas.mayrhofer@tum.de>"]
 version = "0.1.0"
 
 [deps]
-Boilerplate = "fe7df2fb-dcb5-4bf9-996b-0af1f7856ff2"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
