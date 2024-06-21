@@ -50,23 +50,11 @@ function to_block_f16_sums32_cuda(x::CuVector{Float32})
     return sums
 end
 
-function _vecdot_hack2(scale, sums, i, d_all)
-    q8sums_offset = (i-1)*16
-    s = zero(Float32)
-
-    # @fastmath @inbounds 
-    for k in 1:16
-        s += (d_all * scale[k]) * sums[q8sums_offset + k]
-    end
-
-    return 32 * s
-end
 function _vecdot_hack(scale, sums::CuVector, i, d_all)
     q8sums_offset = (i-1)*16
     s = zero(Float32)
 
-    # @fastmath @inbounds 
-    for k in 1:16
+    @fastmath @inbounds for k in 1:16
         s += (d_all * scale[k]) * sums[q8sums_offset + k]
     end
 
@@ -97,7 +85,7 @@ function vecdot_q6_cuda(A, idx, x, x_sums)
          d_all = A[i, idx].d
          scale = A[i, idx].scales
          
-         isum_mins = _vecdot_hack2(scale, x_sums, i, d_all)
+         isum_mins = _vecdot_hack(scale, x_sums, i, d_all)
          # @show isum_mins
  
          isum = zero(Float32)
