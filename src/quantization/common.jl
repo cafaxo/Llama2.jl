@@ -46,9 +46,17 @@ function dequantize!(y::AbstractVector{Float32}, x::AbstractVector{Float32})
     return y
 end
 
-function dequantize(x::AbstractVector{<:Union{block_q4_K,block_q6_K,block_q8_K}})
-    y = zeros(Float32, length(x)*QK_K)
+function dequantize(x::AbstractVector{<:Union{block_q4_K, block_q5_K, block_q6_K, block_q8_K}})
+    y = zeros(Float16, length(x)*QK_K) # TODO use this!
+    # y = zeros(Float32, length(x)*QK_K)
     dequantize!(y, x)
+    return y
+end
+# Not sure if correct, numerically weights were not the same with it:
+function dequantize(x::AbstractMatrix{<:Union{block_q4_K, block_q5_K, block_q6_K, block_q8_K}})
+    y = zeros(Float16, size(x,1) * size(x,2) * QK_K)
+    dequantize!(y, reshape(x, :))
+    y = reshape(y, size(x,1) * QK_K, size(x,2))
     return y
 end
 
