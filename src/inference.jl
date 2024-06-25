@@ -24,25 +24,25 @@ end
 
 @kwdef struct TransformerLayerWeights
     # weights for rmsnorms
-    rms_att_weight::Vector{Float32} # (dim,)
-    rms_ffn_weight::Vector{Float32} # (dim,)
+    rms_att_weight::AbstractVector{Float32} # (dim,) # usually Float32
+    rms_ffn_weight::AbstractVector{Float32} # (dim,) # usually Float32
     # weights for matmuls
-    wq::Matrix # (dim, dim)
-    wk::Matrix # (dim, dim)
-    wv::Matrix # (dim, dim)
-    wo::Matrix # (dim, dim)
+    wq::AbstractMatrix # (dim, dim)
+    wk::AbstractMatrix # (dim, dim)
+    wv::AbstractMatrix # (dim, dim) # different quantization usually
+    wo::AbstractMatrix # (dim, dim)
     # weights for ffn
-    w1::Matrix # (dim, hidden_dim)
-    w2::Matrix # (hidden_dim, dim)
-    w3::Matrix # (dim, hidden_dim)
+    w1::AbstractMatrix # (dim, hidden_dim)
+    w2::AbstractMatrix # (hidden_dim, dim) # different quantization usually
+    w3::AbstractMatrix # (dim, hidden_dim)
 end
 
 @kwdef struct TransformerWeights
-    token_embedding_table::Matrix # (dim, vocab_size)
-    layers::Vector{TransformerLayerWeights}
+    token_embedding_table::AbstractMatrix # (dim, vocab_size)
+    layers::Vector{TransformerLayerWeights} # NTuple{TransformerLayerWeights} # but not every layer is the same type!
     # final rmsnorm
-    rms_final_weight::Vector{Float32} # (dim,)
-    output_weight::Matrix # (dim, vocab_size)
+    rms_final_weight::AbstractVector # (dim,) # Float32
+    output_weight::AbstractMatrix # (dim, vocab_size)
 end
 
 struct LanguageModel{TOK<:Tokenizer}
@@ -58,139 +58,52 @@ function Base.show(io::IO, mime::MIME"text/plain", model::LanguageModel)
 end
 
 struct KVCache
-    key_cache::Array{Float32,3}   # (head_size, n_heads, seq_len)
-    value_cache::Array{Float32,3} # (seq_len, head_size, n_heads)
+    key_cache::AbstractArray{Float32, 3}   # (head_size, n_heads, seq_len), {Float32,3}
+    value_cache::AbstractArray{Float32, 3} # (seq_len, head_size, n_heads), {Float32,3}
 end
 
-KVCache(head_size::Int, n_heads::Int, seq_len::Int) = KVCache(
-    zeros(Float32, head_size, n_heads, seq_len),
-    zeros(Float32, seq_len, head_size, n_heads),
+KVCache(head_size::Int, n_heads::Int, seq_len::Int, AT) = KVCache(
+    AT(zeros(Float32, head_size, n_heads, seq_len)),
+    AT(zeros(Float32, seq_len, head_size, n_heads)),
 )
 
 @kwdef struct RunState
     # current wave of activations
-    x::Vector{Float32}      # activation at current time stamp (dim,)
-    xb::Vector{Float32}     # same, but inside a residual branch (dim,)
-    xb2::Vector{Float32}    # an additional buffer just for convenience (dim,)
-    hb::Vector{Float32}     # buffer for hidden dimension in the ffn (hidden_dim,)
-    hb2::Vector{Float32}    # buffer for hidden dimension in the ffn (hidden_dim,)
-    q::Vector{Float32}      # query (dim,)
-    k::Vector{Float32}      # key (dim,)
-    v::Vector{Float32}      # value (dim,)
-    att::Vector{Float32}    # buffer for scores/attention values (seq_len * n_heads,)
-    logits::Vector{Float32} # output logits
+    x::AbstractVector{Float32}      # activation at current time stamp (dim,)
+    xb::AbstractVector{Float32}     # same, but inside a residual branch (dim,)
+    xb2::AbstractVector{Float32}    # an additional buffer just for convenience (dim,)
+    hb::AbstractVector{Float32}     # buffer for hidden dimension in the ffn (hidden_dim,)
+    hb2::AbstractVector{Float32}    # buffer for hidden dimension in the ffn (hidden_dim,)
+    q::AbstractVector{Float32}      # query (dim,)
+    k::AbstractVector{Float32}      # key (dim,)
+    v::AbstractVector{Float32}      # value (dim,)
+    att::AbstractVector{Float32}    # buffer for scores/attention values (seq_len * n_heads,)
+    logits::AbstractVector{Float32} # output logits
     # kv cache
     kvcache_layers::Vector{KVCache}
 end
 
-RunState(c::ModelConfig) = RunState(;
-    x              = zeros(Float32, c.dim),
-    xb             = zeros(Float32, c.dim),
-    xb2            = zeros(Float32, c.dim),
-    hb             = zeros(Float32, c.hidden_dim),
-    hb2            = zeros(Float32, c.hidden_dim),
-    q              = zeros(Float32, c.dim),
-    k              = zeros(Float32, (c.dim ÷ c.n_heads) * c.n_kv_heads),
-    v              = zeros(Float32, (c.dim ÷ c.n_heads) * c.n_kv_heads),
-    att            = zeros(Float32, c.seq_len * c.n_heads),
-    logits         = zeros(Float32, c.vocab_size),
-    kvcache_layers = [KVCache(c.dim ÷ c.n_heads, c.n_kv_heads, c.seq_len) for _ in 1:c.n_layers],
+RunState(c::ModelConfig, AT) where T = RunState(;
+    x              = AT(zeros(Float32, c.dim)),
+    xb             = AT(zeros(Float32, c.dim)),
+    xb2            = AT(zeros(Float32, c.dim)),
+    hb             = AT(zeros(Float32, c.hidden_dim)),
+    hb2            = AT(zeros(Float32, c.hidden_dim)),
+    q              = AT(zeros(Float32, c.dim)),
+    k              = AT(zeros(Float32, (c.dim ÷ c.n_heads) * c.n_kv_heads)),
+    v              = AT(zeros(Float32, (c.dim ÷ c.n_heads) * c.n_kv_heads)),
+    att            = AT(zeros(Float32, c.seq_len * c.n_heads)),
+    logits         = AT(zeros(Float32, c.vocab_size)),
+    kvcache_layers = [KVCache(c.dim ÷ c.n_heads, c.n_kv_heads, c.seq_len, AT) for _ in 1:c.n_layers],
 )
-get_run_state(model::LanguageModel) = RunState(model.config)
-
-# A nicer silu could be? silu(x) = x*σ(x)
-silu(x) = x * (1f0 / (1f0 + exp(-x)))
-
-function rmsnorm!(o, x, weight)
-    ss = dot(x, x)
-    ss /= length(x)
-    ss += 1f-6
-    ss = 1f0 / sqrt(ss)
-    # normalize and scale
-    o .= weight .* (ss .* x)
-    return nothing
+get_run_state(model::LanguageModel) = begin
+    ARRAY_TYPE = typeof(model.weights.token_embedding_table)
+    RunState(model.config, ARRAY_TYPE.name.wrapper)
 end
 
-function rope!(x::AbstractMatrix{Float32}, pos::Int, config::ModelConfig)
-    x = reinterpret(ComplexF32, x)
-    head_size_div2, n_heads = size(x)
-
-    freq_base = config.rope_freq_base
-    freq_scale = 1.0f0
-
-    theta_scale = freq_base ^ (-inv(Float32(head_size_div2)))
-
-    @inbounds for head in 1:n_heads
-        theta = freq_scale * (pos - 1)
-
-        for i in 1:head_size_div2
-            x[i, head] *= cis(theta)
-            theta *= theta_scale
-        end
-    end
-
-    return nothing
-end
-
-function softmax!(x)
-    x .= exp.(x .- maximum(x))
-    # normalize
-    x ./= sum(x)
-    return nothing
-end
-@views function softmax_for!(att, n_heads)
-    for h in 1:n_heads
-        # softmax the scores to get attention weights
-        softmax!(att[:, h])
-    end
-end
-
-function attention_weights!(att, key_cache::Array, q)
-    n_gqa = size(q, 2) ÷ size(key_cache, 2)
-    key_h = 1
-
-    for h in axes(att, 2)
-        @inbounds @fastmath for t in axes(att, 1)
-            s = 0f0
-
-            for i in axes(q, 1)
-                s += q[i, h] * key_cache[i, key_h, t]
-            end
-
-            att[t, h] = s
-        end
-
-        if h % n_gqa == 0
-            key_h += 1
-        end
-    end
-
-    return att
-end
-
-function combine_values!(xb, value_cache, att)
-    n_gqa = size(att, 2) ÷ size(value_cache, 3)
-    value_h = 1
-
-    for h in axes(xb, 2)
-        @inbounds @fastmath for i in axes(xb, 1)
-            s = 0f0
-
-            for t in axes(att, 1)
-                s += att[t, h] * value_cache[t, i, value_h]
-            end
-
-            xb[i, h] = s
-        end
-
-        if h % n_gqa == 0
-            value_h += 1
-        end
-    end
-
-    return xb
-end
-include("inferenceCUDA.jl")
+# A nicer silu
+silu(x) = x*σ(x) # x * (1f0 / (1f0 + exp(-x)))
+include("kernels.KA.jl")
 
 @views function transformer!(token::Int, pos::Int, config::ModelConfig, s::RunState, weights::TransformerWeights)
     x = s.x
@@ -225,8 +138,8 @@ include("inferenceCUDA.jl")
         k = reshape(s.k, head_size, n_kv_heads)
 
         # apply RoPE rotation to the q and k vectors for each head
-        rope!(q, pos, config)
-        rope!(k, pos, config)
+        rope!(q, pos, config.rope_freq_base)
+        rope!(k, pos, config.rope_freq_base)
 
         # save key,value at this time step (pos) to our kv cache
         copyto!(kv.key_cache[:, :, pos], s.k)
@@ -283,7 +196,7 @@ include("inferenceCUDA.jl")
 end
 
 function sample(
-        model::Union{LanguageModel, LanguageModelCUDA},
+        model::LanguageModel,
         prompt::String = "";
         temperature::Float32 = 0.9f0,
         stop_on_special_token = true,

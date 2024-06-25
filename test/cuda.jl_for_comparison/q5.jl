@@ -1,8 +1,5 @@
-# implementation based on: https://github.com/ggerganov/llama.cpp/blob/a55eb1bf0fa2fd84147bdfd384391e029d988253/ggml-sycl.cpp#L4340
-using KernelAbstractions
-
-@kernel function dequantize_q5_kernel!(y, x, nb)
-    idx = @index(Global)
+function dequantize_q5_kernel(y, x, nb,)
+    idx = threadIdx().x + (blockIdx().x - 1) * blockDim().x
     if idx <= nb
         d = Float32(x[idx].d)
         dmin = Float32(x[idx].dmin)
@@ -37,13 +34,15 @@ using KernelAbstractions
     end
 end
 
-function dequantize!(y::AbstractVector{Float16}, x::AbstractVector{block_q5_K})
-    k = length(y)
-    @assert k % QK_K == 0
-    nb = k ÷ QK_K
+function dequantize_cuda!(y::CuVector{Float16}, x::CuVector{block_q5_K})
+  k = length(y)
+  @assert k % QK_K == 0
+  nb = k ÷ QK_K
 
-    kernel! = dequantize_q5_kernel!(KernelAbstractions.get_backend(y))
-    kernel!(y, x, nb, ndrange=nb)
+  threads_per_block = 256
+  blocks_per_grid = ceil(Int, nb / threads_per_block)
 
-    return y
+  @cuda threads=threads_per_block blocks=blocks_per_grid dequantize_q5_kernel(y, x, nb,)
+
+  return y
 end

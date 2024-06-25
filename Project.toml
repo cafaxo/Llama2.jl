@@ -6,6 +6,7 @@ version = "0.1.0"
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
 Mmap = "a63ad114-7e13-5084-954f-fe012c677804"

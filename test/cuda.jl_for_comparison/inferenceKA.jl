@@ -1,4 +1,3 @@
-using CUDA
 
 struct KVCacheCUDA
   key_cache::CuArray{Float32,3}   # (head_size, n_heads, seq_len)
@@ -51,7 +50,7 @@ RunStateCUDA(rs::RunState) = RunStateCUDA(
   w3::CuArray{T, 2} # (dim, hidden_dim)
 end
 function to_cuda(weights::TransformerLayerWeights)
-    return TransformerLayerWeightsCUDA(
+    return TransformerLayerWeights{CuArray}(
         rms_att_weight = cu(weights.rms_att_weight),
         rms_ffn_weight = cu(weights.rms_ffn_weight),
         wq = cu(weights.wq),
@@ -65,14 +64,14 @@ function to_cuda(weights::TransformerLayerWeights)
 end
 @kwdef struct TransformerWeightsCUDA
     token_embedding_table::CuArray # (dim, vocab_size)
-    layers::Vector{TransformerLayerWeightsCUDA}
+    layers::Vector{TransformerLayerWeights}
     # final rmsnorm
     rms_final_weight::CuVector{Float32} # (dim,)
     output_weight::CuArray # (dim, vocab_size)
 end
 
-function to_cuda(weights::TransformerWeights)
-    return TransformerWeightsCUDA(
+function to_cuda(weights::TransformerWeights{T}) where T <: AbstractArray
+    return TransformerWeights{CuArray}(
         token_embedding_table = cu(weights.token_embedding_table),
         layers = [to_cuda(layer) for layer in weights.layers],
         rms_final_weight = cu(weights.rms_final_weight),
@@ -86,7 +85,7 @@ struct LanguageModelCUDA{TOK<:Tokenizer}
   weights::TransformerWeightsCUDA
 end
 get_run_state(model::LanguageModelCUDA) = RunStateCUDA(RunState(model.config))
-function to_cuda(llm::LanguageModel)
+function to_cuda(llm::LanguageModel{Array})
   return LanguageModelCUDA(
       llm.config, llm.tokenizer, to_cuda(llm.weights)
   )
@@ -152,7 +151,7 @@ function attention_weights_kernel!(att, key_cache, q, n_gqa)
     return nothing
 end
 
-function attention_weights!(att::CuArray, key_cache::CuArray, q::CuArray)
+function attention_weights!(att::AbstractArray, key_cache::AbstractArray, q::AbstractArray)
     n_gqa = size(q, 2) ÷ size(key_cache, 2)
 
     threads_per_block = (16, 16)
@@ -183,7 +182,7 @@ function combine_values_kernel(xb, value_cache, att, n_gqa)
   end
   return nothing
 end
-function combine_values!(xb::CuMatrix, value_cache::CuArray{T, 3}, att::CuMatrix) where T
+function combine_values!(xb::AbstractMatrix, value_cache::AbstractArray, att) where T
   n_gqa = size(att, 2) ÷ size(value_cache, 3)
   
   threads_per_block = (16, 16)
@@ -210,7 +209,7 @@ function softmax_kernel(att, attention_maximum)
         end
     end
 end
-@views function softmax_for!(att::CuMatrix{Float32}, n_heads::Int)
+@views function softmax_for!(att::AbstractMatrix, n_heads::Int)
   # n_heads = size(att, 2)
 
   threads_per_block = 256
@@ -249,7 +248,7 @@ function rmsnorm_kernel(o, x, weight, length_x)
     end
     nothing
 end
-function rmsnorm!(o::CuVector{Float32}, x::CuVector{Float32}, weight::CuVector{Float32})
+function rmsnorm!(o::AbstractVector, x::AbstractVector, weight::AbstractVector)
   length_x = length(x)
 
   threads_per_block = 256
@@ -259,7 +258,7 @@ function rmsnorm!(o::CuVector{Float32}, x::CuVector{Float32}, weight::CuVector{F
 end
 
 
-@views function transformer!(token::Int, pos::Int, config::ModelConfig, s::RunStateCUDA, weights::TransformerWeightsCUDA)
+@views function transformer!(token::Int, pos::Int, config::ModelConfig, s::RunState{CuArray}, weights::TransformerWeights{CuArray})
   x = s.x
 
   (;
@@ -271,7 +270,7 @@ end
   ) = config
 
   head_size = dim ÷ n_heads
-  CUDA.@sync begin # syncing to make sure timings are accurate outside. Although this is not important.
+  CUDA.@sync begin # syncing for safety reasons, to make sure that step timings are not measured incorrectly from the outside.
   # copy the token embedding into x
   dequantize_cuda!(x, weights.token_embedding_table[:, token])
 
@@ -292,8 +291,8 @@ end
       k = reshape(s.k, head_size, n_kv_heads)
       
       # apply RoPE rotation to the q and k vectors for each head
-      @time CUDA.@sync rope!(q, pos, config)
-      rope!(k, pos, config)
+      @time CUDA.@sync rope!(q, pos, config.rope_freq_base)
+      rope!(k, pos, config.rope_freq_base)
 
       # save key,value at this time step (pos) to our kv cache
       @time CUDA.@sync copyto!(kv.key_cache[:, :, pos], s.k)
