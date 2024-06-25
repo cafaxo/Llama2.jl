@@ -101,8 +101,7 @@ get_run_state(model::LanguageModel) = begin
     RunState(model.config, ARRAY_TYPE.name.wrapper)
 end
 
-# A nicer silu
-silu(x) = x*σ(x) # x * (1f0 / (1f0 + exp(-x)))
+silu(x) = x*σ(x) # Basically: x * (1f0 / (1f0 + exp(-x)))
 include("kernels.KA.jl")
 
 @views function transformer!(token::Int, pos::Int, config::ModelConfig, s::RunState, weights::TransformerWeights)

@@ -561,7 +561,6 @@ end
   return (x & 0xff, (x >> 8) & 0xff, (x >> 16) & 0xff, (x >> 24) & 0xff)
 end
 
-
 # unused but maybe for later.
 function dp4a!(a::Int32, b::Int32, c::Int32)
   va = reinterpret(Vec{4,Int8}, a)
