@@ -1,3 +1,5 @@
+using Llama2: block_q5_K
+
 function dequantize_q5_kernel(y, x, nb,)
     idx = threadIdx().x + (blockIdx().x - 1) * blockDim().x
     if idx <= nb

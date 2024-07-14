@@ -22,12 +22,10 @@ include("quantization/q4.jl")
 include("quantization/q5.jl")
 include("quantization/q6.jl")
 include("quantization/q8.jl")
-include("quantization/vecdot.jl")
 include("quantization/vecdot.KA.jl")
 
 # inference
 include("tokenizer.jl")
-include("matmul.jl")
 include("inference.jl")
 
 # model loading

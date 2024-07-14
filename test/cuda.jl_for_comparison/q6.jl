@@ -1,3 +1,5 @@
+using Llama2: block_q6_K
+
 # ChatGPT-4o generated CUDA kernel based on the aboce dequantize! function
 function dequantize_q6_kernel(y, x, nb, QK_K)
     idx = threadIdx().x + (blockIdx().x - 1) * blockDim().x

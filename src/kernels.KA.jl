@@ -1,6 +1,6 @@
 using KernelAbstractions
 
-@kernel function rope_kernel!(x, pos, head_size_div2, n_heads, theta_scale, freq_scale)
+@kernel function rope_kernel!(x, @Const(pos), @Const(head_size_div2), @Const(n_heads), @Const(theta_scale), @Const(freq_scale))
     head = @index(Global, Linear)
     
     if head <= n_heads
@@ -32,10 +32,10 @@ function rope!(x::AbstractMatrix{Float32}, pos::Int, freq_base::Float32)
 
     kernel! = rope_kernel!(KernelAbstractions.get_backend(x))
     kernel!(x, pos, head_size_div2, n_heads, theta_scale, freq_scale, ndrange=n_heads)
-    KernelAbstractions.synchronize(KernelAbstractions.get_backend(x))
+    # KernelAbstractions.synchronize(KernelAbstractions.get_backend(x))
 end
 
-@kernel function attention_weights_kernel!(att, key_cache, q, n_gqa)
+@kernel function attention_weights_kernel!(att, @Const(key_cache), @Const(q), n_gqa)
     t, h = @index(Global, NTuple)
 
     if t <= size(att, 1) && h <= size(att, 2)
@@ -54,12 +54,12 @@ function attention_weights!(att::AbstractArray, key_cache::AbstractArray, q::Abs
 
     kernel! = attention_weights_kernel!(KernelAbstractions.get_backend(att))
     kernel!(att, key_cache, q, n_gqa, ndrange=size(att))
-    KernelAbstractions.synchronize(KernelAbstractions.get_backend(att))
+    # KernelAbstractions.synchronize(KernelAbstractions.get_backend(att))
 
     return att
 end
 
-@kernel function combine_values_kernel!(xb, value_cache, att, n_gqa)
+@kernel function combine_values_kernel!(xb, @Const(value_cache), @Const(att), n_gqa)
     i, h = @index(Global, NTuple)
   
     if i <= size(xb, 1) && h <= size(xb, 2)
@@ -79,10 +79,10 @@ function combine_values!(xb::AbstractMatrix, value_cache::AbstractArray, att::Ab
   
     kernel! = combine_values_kernel!(KernelAbstractions.get_backend(xb))
     kernel!(xb, value_cache, att, n_gqa, ndrange=size(xb))
-    KernelAbstractions.synchronize(KernelAbstractions.get_backend(xb))
+    # KernelAbstractions.synchronize(KernelAbstractions.get_backend(xb))
 end
 
-@kernel function softmax_kernel!(att, attention_maximum)
+@kernel function softmax_kernel!(att, @Const(attention_maximum))
     h = @index(Global)
 
     if h <= size(att, 2)
@@ -102,11 +102,11 @@ end
 end
 
 @views function softmax_for!(att::AbstractMatrix, n_heads::Int)
-    att_max = reshape(maximum(att, dims=1), 1, :)
+    att_max = reshape(maximum(att, dims=1), :)
 
     kernel! = softmax_kernel!(KernelAbstractions.get_backend(att))
     kernel!(att, att_max, ndrange=n_heads)
-    KernelAbstractions.synchronize(KernelAbstractions.get_backend(att))
+    # KernelAbstractions.synchronize(KernelAbstractions.get_backend(att))
 end
 
 @kernel function rmsnorm_kernel!(o, x, weight, length_x)
@@ -130,5 +130,5 @@ function rmsnorm!(o::AbstractVector, x::AbstractVector, weight::AbstractVector)
 
     kernel! = rmsnorm_kernel!(KernelAbstractions.get_backend(o))
     kernel!(o, x, weight, length_x, ndrange=length_x)
-    KernelAbstractions.synchronize(KernelAbstractions.get_backend(o))
+    # KernelAbstractions.synchronize(KernelAbstractions.get_backend(o))
 end

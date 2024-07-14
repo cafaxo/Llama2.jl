@@ -1,3 +1,4 @@
+using Llama2: block_q4_K
 
 function dequantize_q4_kernel(y, x, nb, QK_K)
     idx = threadIdx().x + (blockIdx().x - 1) * blockDim().x

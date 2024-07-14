@@ -1,95 +1,5 @@
-
-struct KVCacheCUDA
-  key_cache::CuArray{Float32,3}   # (head_size, n_heads, seq_len)
-  value_cache::CuArray{Float32,3} # (seq_len, head_size, n_heads)
-end
-CUDA.cu(kv::KVCache) = KVCacheCUDA(cu(kv.key_cache), cu(kv.value_cache))
-
-@kwdef struct RunStateCUDA
-  # current wave of activations
-  x::CuVector{Float32}      # activation at current time stamp (dim,)
-  xb::CuVector{Float32}     # same, but inside a residual branch (dim,)
-  xb2::CuVector{Float32}    # an additional buffer just for convenience (dim,)
-  hb::CuVector{Float32}     # buffer for hidden dimension in the ffn (hidden_dim,)
-  hb2::CuVector{Float32}    # buffer for hidden dimension in the ffn (hidden_dim,)
-  q::CuVector{Float32}      # query (dim,)
-  k::CuVector{Float32}      # key (dim,)
-  v::CuVector{Float32}      # value (dim,)
-  att::CuVector{Float32}    # buffer for scores/attention values (seq_len * n_heads,)
-  logits::CuVector{Float32} # output logits
-  # kv cache
-  kvcache_layers::Vector{KVCacheCUDA}
-end
-RunStateCUDA(rs::RunState) = RunStateCUDA(
-  x              = cu(rs.x),
-  xb             = cu(rs.xb),
-  xb2            = cu(rs.xb2),
-  hb             = cu(rs.hb),
-  hb2            = cu(rs.hb2),
-  q              = cu(rs.q),
-  k              = cu(rs.k),
-  v              = cu(rs.v),
-  att            = cu(rs.att),
-  logits         = cu(rs.logits),
-  kvcache_layers = [cu(kv) for kv in rs.kvcache_layers],
-)
-
-
-@kwdef struct TransformerLayerWeightsCUDA{T, T2}
-  # weights for rmsnorms
-  rms_att_weight::CuArray{Float32, 1} # (dim,)
-  rms_ffn_weight::CuArray{Float32, 1} # (dim,)
-  # weights for matmuls
-  wq::CuArray{T, 2} # (dim, dim)
-  wk::CuArray{T, 2} # (dim, dim)
-  wv::CuArray{T2, 2} # (dim, dim)
-  wo::CuArray{T, 2} # (dim, dim)
-  # weights for ffn
-  w1::CuArray{T, 2} # (dim, hidden_dim)
-  w2::CuArray{T2, 2} # (hidden_dim, dim)
-  w3::CuArray{T, 2} # (dim, hidden_dim)
-end
-function to_cuda(weights::TransformerLayerWeights)
-    return TransformerLayerWeights{CuArray}(
-        rms_att_weight = cu(weights.rms_att_weight),
-        rms_ffn_weight = cu(weights.rms_ffn_weight),
-        wq = cu(weights.wq),
-        wk = cu(weights.wk),
-        wv = cu(weights.wv),
-        wo = cu(weights.wo),
-        w1 = cu(weights.w1),
-        w2 = cu(weights.w2),
-        w3 = cu(weights.w3),
-    )
-end
-@kwdef struct TransformerWeightsCUDA
-    token_embedding_table::CuArray # (dim, vocab_size)
-    layers::Vector{TransformerLayerWeights}
-    # final rmsnorm
-    rms_final_weight::CuVector{Float32} # (dim,)
-    output_weight::CuArray # (dim, vocab_size)
-end
-
-function to_cuda(weights::TransformerWeights{T}) where T <: AbstractArray
-    return TransformerWeights{CuArray}(
-        token_embedding_table = cu(weights.token_embedding_table),
-        layers = [to_cuda(layer) for layer in weights.layers],
-        rms_final_weight = cu(weights.rms_final_weight),
-        output_weight = cu(weights.output_weight)
-    )
-end
-
-struct LanguageModelCUDA{TOK<:Tokenizer}
-  config::ModelConfig
-  tokenizer::TOK
-  weights::TransformerWeightsCUDA
-end
-get_run_state(model::LanguageModelCUDA) = RunStateCUDA(RunState(model.config))
-function to_cuda(llm::LanguageModel{Array})
-  return LanguageModelCUDA(
-      llm.config, llm.tokenizer, to_cuda(llm.weights)
-  )
-end
+using Llama2: KVCache, RunState, TransformerLayerWeights, TransformerWeights, LanguageModel, ModelConfig, Tokenizer
+using CUDA
 
 # ChatGPT-4o generated rope! without the ComplexF32 reinterpret and cis written out.
 function rope_kernel(x, pos, head_size_div2, n_heads, theta_scale, freq_scale)
@@ -116,7 +26,7 @@ function rope_kernel(x, pos, head_size_div2, n_heads, theta_scale, freq_scale)
     nothing
 end
 
-function rope!(x::CuMatrix{Float32}, pos::Int, config::ModelConfig)
+function rope_cudajl!(x::CuMatrix{Float32}, pos::Int, config::ModelConfig)
   head_size, n_heads = size(x)
   head_size_div2 = head_size ÷ 2
   freq_base = config.rope_freq_base
@@ -142,8 +52,6 @@ function attention_weights_kernel!(att, key_cache, q, n_gqa)
 
         @inbounds for j in 1:size(q, 1)
             s += q[j, h] * key_cache[j, key_h, t]
-            # h == 3 && @cushow q[j, h]
-            # h == 3 && @cushow key_cache[j, key_h, t]
         end
         @inbounds att[t, h] = s
     end
@@ -151,7 +59,7 @@ function attention_weights_kernel!(att, key_cache, q, n_gqa)
     return nothing
 end
 
-function attention_weights!(att::AbstractArray, key_cache::AbstractArray, q::AbstractArray)
+function attention_weights_cudajl!(att::AbstractArray, key_cache::AbstractArray, q::AbstractArray)
     n_gqa = size(q, 2) ÷ size(key_cache, 2)
 
     threads_per_block = (16, 16)
@@ -182,7 +90,7 @@ function combine_values_kernel(xb, value_cache, att, n_gqa)
   end
   return nothing
 end
-function combine_values!(xb::AbstractMatrix, value_cache::AbstractArray, att) where T
+function combine_values_cudajl!(xb::AbstractMatrix, value_cache::AbstractArray, att)
   n_gqa = size(att, 2) ÷ size(value_cache, 3)
   
   threads_per_block = (16, 16)
@@ -209,7 +117,7 @@ function softmax_kernel(att, attention_maximum)
         end
     end
 end
-@views function softmax_for!(att::AbstractMatrix, n_heads::Int)
+@views function softmax_for_cudajl!(att::AbstractMatrix, n_heads::Int)
   # n_heads = size(att, 2)
 
   threads_per_block = 256
@@ -248,7 +156,7 @@ function rmsnorm_kernel(o, x, weight, length_x)
     end
     nothing
 end
-function rmsnorm!(o::AbstractVector, x::AbstractVector, weight::AbstractVector)
+function rmsnorm_cudajl!(o::AbstractVector, x::AbstractVector, weight::AbstractVector)
   length_x = length(x)
 
   threads_per_block = 256
@@ -256,9 +164,12 @@ function rmsnorm!(o::AbstractVector, x::AbstractVector, weight::AbstractVector)
 
   @cuda threads=threads_per_block blocks=blocks_per_grid rmsnorm_kernel(o, x, weight, length_x)
 end
+include("q4.jl")
+include("q5.jl")
+include("q6.jl")
+include("vecdot.CUDA.jl")
 
-
-@views function transformer!(token::Int, pos::Int, config::ModelConfig, s::RunState{CuArray}, weights::TransformerWeights{CuArray})
+@views function transformer_cuda!(token::Int, pos::Int, config::ModelConfig, s::RunState, weights::TransformerWeights)
   x = s.x
 
   (;
@@ -280,68 +191,68 @@ end
       kv = s.kvcache_layers[l]
 
       # attention rmsnorm
-      @time CUDA.@sync rmsnorm!(s.xb, x, w.rms_att_weight)
+      rmsnorm_cudajl!(s.xb, x, w.rms_att_weight)
 
       # qkv matmuls for this position
-      @time CUDA.@sync matmul!(s.q, w.wq, s.xb)
-      matmul!(s.k, w.wk, s.xb)
-      matmul!(s.v, w.wv, s.xb)
+      matmul_cudajl!(s.q, w.wq, s.xb)
+      matmul_cudajl!(s.k, w.wk, s.xb)
+      matmul_cudajl!(s.v, w.wv, s.xb)
       
       q = reshape(s.q, head_size, n_heads)
       k = reshape(s.k, head_size, n_kv_heads)
       
       # apply RoPE rotation to the q and k vectors for each head
-      @time CUDA.@sync rope!(q, pos, config.rope_freq_base)
-      rope!(k, pos, config.rope_freq_base)
+      rope_cudajl!(q, pos, config.rope_freq_base)
+      rope_cudajl!(k, pos, config.rope_freq_base)
 
       # save key,value at this time step (pos) to our kv cache
-      @time CUDA.@sync copyto!(kv.key_cache[:, :, pos], s.k)
+      copyto!(kv.key_cache[:, :, pos], s.k)
       copyto!(kv.value_cache[pos, :, :], s.v)
 
       # take a contiguous slice of the attention buffer
       att = reshape(s.att[1:(n_heads*pos)], pos, n_heads)
 
       # multihead attention
-      @time CUDA.@sync attention_weights!(att, kv.key_cache, q)
+      attention_weights_cudajl!(att, kv.key_cache, q)
 
       att ./= sqrt(Float32(head_size))
 
-      softmax_for!(att, n_heads)
+      softmax_for_cudajl!(att, n_heads)
 
       xb = reshape(s.xb, head_size, n_heads)
 
       # weighted sum of the values
-      combine_values!(xb, kv.value_cache, att)
+      combine_values_cudajl!(xb, kv.value_cache, att)
 
       # final matmul to get the output of the attention
-      matmul!(s.xb2, w.wo, s.xb)
+      matmul_cudajl!(s.xb2, w.wo, s.xb)
 
       # residual connection back into x
       x .+= s.xb2
 
       # ffn rmsnorm
-      rmsnorm!(s.xb, x, w.rms_ffn_weight)
+      rmsnorm_cudajl!(s.xb, x, w.rms_ffn_weight)
 
       # Now for FFN in PyTorch we have: self.w2(F.silu(self.w1(x)) * self.w3(x))
       # first calculate self.w1(x) and self.w3(x)
-      matmul!(s.hb, w.w1, s.xb)
-      matmul!(s.hb2, w.w3, s.xb)
+      matmul_cudajl!(s.hb, w.w1, s.xb)
+      matmul_cudajl!(s.hb2, w.w3, s.xb)
 
       s.hb .= silu.(s.hb)
       
       s.hb .*= s.hb2
 
       # final matmul to get the output of the ffn
-      matmul!(s.xb, w.w2, s.hb)
+      matmul_cudajl!(s.xb, w.w2, s.hb)
       # residual connection
       x .+= s.xb
   end
 
   # final rmsnorm
-  rmsnorm!(x, x, weights.rms_final_weight)
+  rmsnorm_cudajl!(x, x, weights.rms_final_weight)
 
   # classifier into logits
-  matmul!(s.logits, weights.output_weight, x)
+  matmul_cudajl!(s.logits, weights.output_weight, x)
   
   end
   return nothing
