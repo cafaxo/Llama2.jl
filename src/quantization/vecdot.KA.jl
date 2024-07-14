@@ -1,5 +1,6 @@
 
 using KernelAbstractions
+using KernelAbstractions.Extras: @unroll
 
 function matmul!(
     y::AbstractVector{Float32},
