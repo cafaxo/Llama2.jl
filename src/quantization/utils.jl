@@ -1,3 +1,5 @@
+using KernelAbstractions
+
 @noinline Base.@assume_effects :total function fieldoffset_sym(::Type{T}, s::Symbol) where {T}
     for i in 1:fieldcount(T)
         if fieldname(T, i) == s
@@ -114,4 +116,63 @@ function get_int_from_int8_aligned(x8::Vector{Int8}, i32::Int)
     x32 = reinterpret(Int32, x8[byte_idx:byte_idx + sizeof(Int32) - 1])[1]
 
     return x32
+end
+
+@kernel function sum_blocks_lmem_kernel(
+    @Const(x), sums, 
+  )
+    i = @index(Global, Linear)
+    li = @index(Local, Linear)
+    N = @uniform @groupsize()[1]
+    
+    shared_mem = @localmem Float32 N
+    
+    @inbounds if i <= length(x)
+        shared_mem[li] = x[i]
+        @synchronize
+        
+        s = N ÷ 2
+        while s > 0
+            if li <= s
+                shared_mem[li] += shared_mem[li + s]
+            end
+            s ÷= 2
+            @synchronize
+        end
+        
+        if li == 1
+            block_id = (i - 1) ÷ N + 1
+            sums[block_id] = Float16(shared_mem[1])
+        end
+    end
+end
+# this simple solution is pretty much the same speed as the above LMEM solution.
+@kernel function sum_blocks_kernel(@Const(x), sums, num_blocks, sum_size)
+    block_id = @index(Global)
+  
+    if block_id <= num_blocks
+        sum = 0.0f0
+        start_idx = (block_id-1) * sum_size
+        for i in 1:sum_size
+            sum += x[start_idx + i]
+        end
+        sums[block_id] = sum
+    end
+  end
+function sum_blocks_ka!(sums, x::AbstractVector{Float32}, block_size::Int=32)
+    num_blocks = cld(length(x), block_size)
+    backend = KernelAbstractions.get_backend(x)
+    # kernel! = sum_blocks_kernel(backend, (block_size,))
+    # kernel!(x, sums, num_blocks, block_size, ndrange=num_blocks)
+    kernel! = sum_blocks_lmem_kernel(backend, (block_size,))
+    kernel!(x, sums, ndrange=length(x))
+    return sums
+end
+function sum_blocks_ka(x::AbstractVector{Float32}, block_size::Int=32)
+    num_blocks = cld(length(x), block_size)
+    sums = KernelAbstractions.zeros(get_backend(x), Float16, num_blocks)
+    # sums = similar(x, Float16, num_blocks)
+    sum_blocks_ka!(sums, x, block_size)
+  
+    return sums
 end
