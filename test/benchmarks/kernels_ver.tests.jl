@@ -1,7 +1,7 @@
 using CUDA
 using Llama2
 
-model = load_gguf_model("/llms/gguf/Meta-Llama-3-8B.Q4_K_S.gguf", AT=CuArray);
+model = load_gguf_model("/llms/gguf/Meta-Llama-3-8B.Q4_K_S.gguf", array_type=CuArray);
 using Llama2: get_run_state
 s = get_run_state(model)
 w = model.weights.layers[1]

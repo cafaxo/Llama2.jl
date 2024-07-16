@@ -1,11 +1,11 @@
 using KernelAbstractions
-using Llama2: block_q4_K, block_q5_K, block_q6_K, QK_K, reinterpret_contiguous, _vecdot_hack, block_sums_kernel_v2
+using Llama2: block_q4_K, block_q5_K, block_q6_K, QK_K, reinterpret_contiguous, _vecdot_hack, block_sums_kernel
 function matmul_v1!(
   y::AbstractVector{Float32},
   A::AbstractMatrix{T},
   x::AbstractVector{Float32},
 ) where {T<:Union{block_q4_K,block_q5_K,block_q6_K}}
-  x_sums = block_sums_v1(x, (T <: Union{block_q4_K,block_q5_K}) ? 32 : 16) # FIXME: preallocate this
+  x_sums = block_sums_v1(x, (T <: Union{block_q4_K,block_q5_K}) ? 32 : 16)
   vecdot_ka_v1!(y, A, x, x_sums)
   return nothing
 end
@@ -29,7 +29,7 @@ function block_sums_v1!(sums, x::AbstractVector{Float32}, block_size::Int=32)
   backend = KernelAbstractions.get_backend(x)
   # kernel! = block_sums_kernel_v1(backend, (block_size,))
   # kernel!(x, sums, num_blocks, block_size, ndrange=num_blocks)
-  kernel! = block_sums_kernel_v2(backend, (block_size,)) # we use v2 version because this way we have the same solution for speed comparison.
+  kernel! = block_sums_kernel(backend, (block_size,)) # we use v2(latest) version because this way we have the same solution for speed comparison.
   kernel!(x, sums, ndrange=length(x))
   return sums
 end

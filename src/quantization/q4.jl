@@ -70,6 +70,17 @@ function make_qkx1_quants(nmax::Int, x::AbstractVector{Float32}, L::AbstractVect
     return scale, -min_x
 end
 
+Base.@propagate_inbounds function get_scale_min_k4(j::Int, q::NTuple{12, UInt8})
+    if j <= 4
+        d = q[j] & UInt8(63)
+        m = q[j + 4] & UInt8(63)
+    else
+        d = (q[j+4] & 0xF) | ((q[j-4] >> 6) << 4)
+        m = (q[j+4] >>  4) | ((q[j-0] >> 6) << 4)
+    end
+
+    return d, m
+end
 
 function quantize!(y::Vector{block_q4_K}, x::Vector{Float32})
     k = length(x)
@@ -156,18 +167,6 @@ function quantize!(y::Vector{block_q4_K}, x::Vector{Float32})
     end
 
     return y
-end
-
-Base.@propagate_inbounds function get_scale_min_k4(j::Int, q::NTuple{12, UInt8})
-    if j <= 4
-        d = q[j] & UInt8(63)
-        m = q[j + 4] & UInt8(63)
-    else
-        d = (q[j+4] & 0xF) | ((q[j-4] >> 6) << 4)
-        m = (q[j+4] >>  4) | ((q[j-0] >> 6) << 4)
-    end
-
-    return d, m
 end
 
 @kernel function dequantize_q4_kernel!(y, x, nb, QK_K)

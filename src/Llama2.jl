@@ -9,6 +9,7 @@ using Random
 using Distributions
 using Mmap
 using KernelAbstractions
+using KernelAbstractions.Extras: @unroll
 
 export ModelConfig, CharTokenizer, LanguageModel
 export load_gguf_model, load_karpathy_model, encode, sample

@@ -101,7 +101,7 @@ get_run_state(model::LanguageModel) = begin
     RunState(model.config, backend)
 end
 
-@kernel function rmsnorm_kernel_optimized!(o, x, weight, length_x)
+@kernel function rmsnorm_kernel!(o, x, weight, length_x)
     local_idx = @index(Local, Linear)
     global_idx = @index(Global, Linear)
     group_size = @groupsize()[1]
@@ -161,11 +161,11 @@ function rmsnorm!(o::AbstractVector, x::AbstractVector, weight::AbstractVector)
     # Choose an appropriate group size (e.g., 256)
     group_size = 256
     
-    kernel! = rmsnorm_kernel_optimized!(backend, group_size)
+    kernel! = rmsnorm_kernel!(backend, group_size)
     kernel!(o, x, weight, length_x, ndrange=length_x, )
 end
 
-@kernel function rope_kernel_v2!(x, @Const(pos), @Const(head_size_div2), @Const(n_heads), @Const(theta_scale), @Const(freq_scale))
+@kernel function rope_kernel!(x, @Const(pos), @Const(head_size_div2), @Const(n_heads), @Const(theta_scale), @Const(freq_scale))
     i, head = @index(Global, NTuple)
     
     if i <= head_size_div2 && head <= n_heads
@@ -194,7 +194,7 @@ function rope!(x::AbstractMatrix{Float32}, pos::Int, freq_base::Float32)
     theta_scale = freq_base ^ (-inv(Float32(head_size_div2)))
 
     workgroup_size = (16, 16)  # Adjust these values based on your hardware
-    kernel! = rope_kernel_v2!(KernelAbstractions.get_backend(x), workgroup_size)
+    kernel! = rope_kernel!(KernelAbstractions.get_backend(x), workgroup_size)
     
     kernel!(x, pos, head_size_div2, n_heads, theta_scale, freq_scale, ndrange=(head_size_div2, n_heads))
 end
@@ -242,7 +242,7 @@ function combine_values!(xb::AbstractMatrix, value_cache::AbstractArray, att::Ab
     kernel!(xb, value_cache, att, n_gqa, ndrange=size(xb))
 end
 
-@kernel function softmax_kernel_v2!(att, @Const(attention_maximum))
+@kernel function softmax_kernel!(att, @Const(attention_maximum))
     i, h = @index(Global, NTuple)
     local_idx = @index(Local)
     group_size = @groupsize()[1]
@@ -290,7 +290,7 @@ end
     att_max = reshape(maximum(att, dims=1), :)
 
     group_size = 32  # Adjust based on your hardware
-    kernel! = softmax_kernel_v2!(backend, (group_size, 1))
+    kernel! = softmax_kernel!(backend, (group_size, 1))
     kernel!(att, att_max, ndrange=(group_size, n_heads), )
 end
 

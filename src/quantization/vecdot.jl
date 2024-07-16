@@ -1,7 +1,4 @@
 
-using KernelAbstractions
-using KernelAbstractions.Extras: @unroll
-
 function matmul!(
     y::AbstractVector{Float32},
     A::AbstractMatrix{T},
@@ -13,7 +10,7 @@ function matmul!(
     return nothing
 end
 
-@kernel function block_sums_kernel_v2(@Const(x), sums)
+@kernel function block_sums_kernel(@Const(x), sums)
     i = @index(Global, Linear)
     li = @index(Local, Linear)
     N = @uniform @groupsize()[1]
@@ -43,7 +40,7 @@ end
 function block_sums!(sums, x::AbstractVector{Float32}, block_size::Int=32)
     num_blocks = cld(length(x), block_size)
     backend = KernelAbstractions.get_backend(x)
-    kernel! = block_sums_kernel_v2(backend, (block_size,))
+    kernel! = block_sums_kernel(backend, (block_size,))
     kernel!(x, sums, ndrange=length(x))
     return sums
 end
@@ -56,7 +53,7 @@ function block_sums(x::AbstractVector{Float32}, block_size::Int=32)
     return sums
 end
 
-@inline function vecdot_q4_v2(A, idx, x, x_sums)
+@inline function vecdot_q4(A, idx, x, x_sums)
     # @assert size(x, 1) == length(x) ÷ 256
     nb = size(A, 1)
   
@@ -124,7 +121,7 @@ end
     idx = @index(Global)
     
     if idx <= length(y)
-        y[idx] = vecdot_q4_v2(A, idx, x, x_sums)
+        y[idx] = vecdot_q4(A, idx, x, x_sums)
     end
 end
 
@@ -137,7 +134,7 @@ function vecdot!(y::AbstractVector{Float32}, A::AbstractMatrix{block_q4_K}, x, x
     return y
 end
 
-@inline function vecdot_q5_v2(A, idx, x, x_sums)
+@inline function vecdot_q5(A, idx, x, x_sums)
     nb = size(A, 1)
     sumf = zero(Float32)
 
@@ -201,7 +198,7 @@ end
     idx = @index(Global)
     
     if idx <= length(y)
-        y[idx] = vecdot_q5_v2(A, idx, x, x_sums)
+        y[idx] = vecdot_q5(A, idx, x, x_sums)
     end
 end
 
@@ -225,7 +222,7 @@ end
     return 32 * s
 end
 
-@inline function vecdot_q6_v2(A, idx, x, x_sums)
+@inline function vecdot_q6(A, idx, x, x_sums)
     nb = size(A, 1)
     sumf = zero(Float32)
 
@@ -323,7 +320,7 @@ end
     idx = @index(Global)
     
     if idx <= length(y)
-        y[idx] = vecdot_q6_v2(A, idx, x, x_sums)
+        y[idx] = vecdot_q6(A, idx, x, x_sums)
     end
 end
 

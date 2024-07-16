@@ -53,14 +53,6 @@ function dequantize(x::AbstractVector{<:Union{block_q4_K, block_q5_K, block_q6_K
     return y
 end
 
-# Not sure if correct, numerically weights were not the same with it:
-function dequantize(x::AbstractMatrix{<:Union{block_q4_K, block_q5_K, block_q6_K, block_q8_K}})
-    y = zeros(Float16, size(x,1) * size(x,2) * QK_K)
-    dequantize!(y, reshape(x, :))
-    y = reshape(y, size(x,1) * QK_K, size(x,2))
-    return y
-end
-
 function quantize(::Type{T}, x::AbstractVector{Float32}) where {T<:Union{block_q4_K,block_q6_K,block_q8_K}}
     @assert length(x) % QK_K == 0
     return quantize!(Vector{T}(undef, length(x) ÷ QK_K), x)
