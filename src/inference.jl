@@ -24,24 +24,24 @@ end
 
 @kwdef struct TransformerLayerWeights
     # weights for rmsnorms
-    rms_att_weight::AbstractVector{Float32} # (dim,) # usually Float32
-    rms_ffn_weight::AbstractVector{Float32} # (dim,) # usually Float32
+    rms_att_weight::AbstractVector{Float32} # (dim,)
+    rms_ffn_weight::AbstractVector{Float32} # (dim,)
     # weights for matmuls
     wq::AbstractMatrix # (dim, dim)
     wk::AbstractMatrix # (dim, dim)
-    wv::AbstractMatrix # (dim, dim) # different quantization usually
+    wv::AbstractMatrix # (dim, dim)
     wo::AbstractMatrix # (dim, dim)
     # weights for ffn
     w1::AbstractMatrix # (dim, hidden_dim)
-    w2::AbstractMatrix # (hidden_dim, dim) # different quantization usually
+    w2::AbstractMatrix # (hidden_dim, dim)
     w3::AbstractMatrix # (dim, hidden_dim)
 end
 
 @kwdef struct TransformerWeights
     token_embedding_table::AbstractMatrix # (dim, vocab_size)
-    layers::Vector{TransformerLayerWeights} # NTuple{TransformerLayerWeights} # but not every layer is the same type!
+    layers::Vector{TransformerLayerWeights}
     # final rmsnorm
-    rms_final_weight::AbstractVector # (dim,) # Float32
+    rms_final_weight::AbstractVector # (dim,)
     output_weight::AbstractMatrix # (dim, vocab_size)
 end
 
@@ -58,8 +58,8 @@ function Base.show(io::IO, mime::MIME"text/plain", model::LanguageModel)
 end
 
 struct KVCache{T<:AbstractArray}
-    key_cache::T   # (head_size, n_heads, seq_len), {Float32,3}
-    value_cache::T # (seq_len, head_size, n_heads), {Float32,3}
+    key_cache::T   # (head_size, n_heads, seq_len)
+    value_cache::T # (seq_len, head_size, n_heads)
 end
 
 KVCache(head_size::Int, n_heads::Int, seq_len::Int, backend) = KVCache(
@@ -83,24 +83,23 @@ KVCache(head_size::Int, n_heads::Int, seq_len::Int, backend) = KVCache(
     kvcache_layers::Vector{KVCache{T2}}
 end
 
-RunState(c::ModelConfig, backend) where T = RunState(;
-    x              = KernelAbstractions.zeros(backend, Float32, c.dim),
-    xb             = KernelAbstractions.zeros(backend, Float32, c.dim),
-    xb2            = KernelAbstractions.zeros(backend, Float32, c.dim),
-    hb             = KernelAbstractions.zeros(backend, Float32, c.hidden_dim),
-    hb2            = KernelAbstractions.zeros(backend, Float32, c.hidden_dim),
-    q              = KernelAbstractions.zeros(backend, Float32, c.dim),
-    k              = KernelAbstractions.zeros(backend, Float32, (c.dim ÷ c.n_heads) * c.n_kv_heads),
-    v              = KernelAbstractions.zeros(backend, Float32, (c.dim ÷ c.n_heads) * c.n_kv_heads),
-    att            = KernelAbstractions.zeros(backend, Float32, c.seq_len * c.n_heads),
-    logits         = KernelAbstractions.zeros(backend, Float32, c.vocab_size),
-    kvcache_layers = [KVCache(c.dim ÷ c.n_heads, c.n_kv_heads, c.seq_len, backend) for _ in 1:c.n_layers],
-)
-get_run_state(model::LanguageModel) = begin
+RunState(model::LanguageModel) = begin
+    c = model.config
     backend = get_backend(model.weights.token_embedding_table)
-    RunState(model.config, backend)
+    RunState(;
+        x              = KernelAbstractions.zeros(backend, Float32, c.dim),
+        xb             = KernelAbstractions.zeros(backend, Float32, c.dim),
+        xb2            = KernelAbstractions.zeros(backend, Float32, c.dim),
+        hb             = KernelAbstractions.zeros(backend, Float32, c.hidden_dim),
+        hb2            = KernelAbstractions.zeros(backend, Float32, c.hidden_dim),
+        q              = KernelAbstractions.zeros(backend, Float32, c.dim),
+        k              = KernelAbstractions.zeros(backend, Float32, (c.dim ÷ c.n_heads) * c.n_kv_heads),
+        v              = KernelAbstractions.zeros(backend, Float32, (c.dim ÷ c.n_heads) * c.n_kv_heads),
+        att            = KernelAbstractions.zeros(backend, Float32, c.seq_len * c.n_heads),
+        logits         = KernelAbstractions.zeros(backend, Float32, c.vocab_size),
+        kvcache_layers = [KVCache(c.dim ÷ c.n_heads, c.n_kv_heads, c.seq_len, backend) for _ in 1:c.n_layers],
+    )
 end
-
 @kernel function rmsnorm_kernel!(o, x, weight, length_x)
     local_idx = @index(Local, Linear)
     global_idx = @index(Global, Linear)
@@ -320,7 +319,7 @@ silu(x) = x*σ(x) # Basically: x * (1f0 / (1f0 + exp(-x)))
         rmsnorm!(s.xb, x, w.rms_att_weight)
 
         # qkv matmuls for this position
-        matmul!(s.q, w.wq, s.xb) # [16, 4096, Llama2.block_q4_K]
+        matmul!(s.q, w.wq, s.xb)
         matmul!(s.k, w.wk, s.xb) 
         matmul!(s.v, w.wv, s.xb)
 
@@ -402,7 +401,7 @@ function sample(
 
     prompt_tokens = encode(prompt, tokenizer)
 
-    state = get_run_state(model)
+    state = RunState(model)
 
     time_start = time_ns()
 

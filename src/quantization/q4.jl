@@ -70,7 +70,7 @@ function make_qkx1_quants(nmax::Int, x::AbstractVector{Float32}, L::AbstractVect
     return scale, -min_x
 end
 
-Base.@propagate_inbounds function get_scale_min_k4(j::Int, q::NTuple{12, UInt8})
+Base.@propagate_inbounds function get_scale_min_k4(j::Int, q::NTuple{12,UInt8})
     if j <= 4
         d = q[j] & UInt8(63)
         m = q[j + 4] & UInt8(63)
