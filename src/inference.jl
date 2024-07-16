@@ -7,9 +7,9 @@
     vocab_size::Int         # vocabulary size, usually 256 (byte-level)
     seq_len::Int            # max sequence length
     rope_freq_base::Float32
-  end
-  
-  function Base.show(io::IO, mime::MIME"text/plain", config::ModelConfig)
+end
+
+function Base.show(io::IO, mime::MIME"text/plain", config::ModelConfig)
     println(io, "ModelConfig(")
     println(io, "  dim            = ", config.dim, ",")
     println(io, "  hidden_dim     = ", config.hidden_dim, ",")
@@ -20,9 +20,9 @@
     println(io, "  seq_len        = ", config.seq_len, ",")
     println(io, "  rope_freq_base = ", config.rope_freq_base, ",")
     print(io, ")")
-  end
-  
-  @kwdef struct TransformerLayerWeights
+end
+
+@kwdef struct TransformerLayerWeights
     # weights for rmsnorms
     rms_att_weight::AbstractVector{Float32} # (dim,) # usually Float32
     rms_ffn_weight::AbstractVector{Float32} # (dim,) # usually Float32
@@ -35,70 +35,70 @@
     w1::AbstractMatrix # (dim, hidden_dim)
     w2::AbstractMatrix # (hidden_dim, dim) # different quantization usually
     w3::AbstractMatrix # (dim, hidden_dim)
-  end
-  
-  @kwdef struct TransformerWeights
+end
+
+@kwdef struct TransformerWeights
     token_embedding_table::AbstractMatrix # (dim, vocab_size)
     layers::Vector{TransformerLayerWeights} # NTuple{TransformerLayerWeights} # but not every layer is the same type!
     # final rmsnorm
     rms_final_weight::AbstractVector # (dim,) # Float32
     output_weight::AbstractMatrix # (dim, vocab_size)
-  end
-  
-  struct LanguageModel{TOK<:Tokenizer}
+end
+
+struct LanguageModel{TOK<:Tokenizer}
     config::ModelConfig
     tokenizer::TOK
     weights::TransformerWeights
-  end
-  
-  function Base.show(io::IO, mime::MIME"text/plain", model::LanguageModel)
+end
+
+function Base.show(io::IO, mime::MIME"text/plain", model::LanguageModel)
     println(io, "LanguageModel(")
     show(io, mime, model.config)
     print(io, ")")
-  end
-  
-  struct KVCache
-    key_cache::AbstractArray{Float32, 3}   # (head_size, n_heads, seq_len), {Float32,3}
-    value_cache::AbstractArray{Float32, 3} # (seq_len, head_size, n_heads), {Float32,3}
-  end
-  
-  KVCache(head_size::Int, n_heads::Int, seq_len::Int, AT) = KVCache(
-    AT(zeros(Float32, head_size, n_heads, seq_len)),
-    AT(zeros(Float32, seq_len, head_size, n_heads)),
-  )
-  
-  @kwdef struct RunState
+end
+
+struct KVCache{T<:AbstractArray}
+    key_cache::T   # (head_size, n_heads, seq_len), {Float32,3}
+    value_cache::T # (seq_len, head_size, n_heads), {Float32,3}
+end
+
+KVCache(head_size::Int, n_heads::Int, seq_len::Int, backend) = KVCache(
+    KernelAbstractions.zeros(backend, Float32, head_size, n_heads, seq_len),
+    KernelAbstractions.zeros(backend, Float32, seq_len, head_size, n_heads),
+)
+
+@kwdef struct RunState{T<:AbstractArray, T2}
     # current wave of activations
-    x::AbstractVector{Float32}      # activation at current time stamp (dim,)
-    xb::AbstractVector{Float32}     # same, but inside a residual branch (dim,)
-    xb2::AbstractVector{Float32}    # an additional buffer just for convenience (dim,)
-    hb::AbstractVector{Float32}     # buffer for hidden dimension in the ffn (hidden_dim,)
-    hb2::AbstractVector{Float32}    # buffer for hidden dimension in the ffn (hidden_dim,)
-    q::AbstractVector{Float32}      # query (dim,)
-    k::AbstractVector{Float32}      # key (dim,)
-    v::AbstractVector{Float32}      # value (dim,)
-    att::AbstractVector{Float32}    # buffer for scores/attention values (seq_len * n_heads,)
-    logits::AbstractVector{Float32} # output logits
+    x::T      # activation at current time stamp (dim,)
+    xb::T     # same, but inside a residual branch (dim,)
+    xb2::T    # an additional buffer just for convenience (dim,)
+    hb::T     # buffer for hidden dimension in the ffn (hidden_dim,)
+    hb2::T    # buffer for hidden dimension in the ffn (hidden_dim,)
+    q::T      # query (dim,)
+    k::T      # key (dim,)
+    v::T      # value (dim,)
+    att::T    # buffer for scores/attention values (seq_len * n_heads,)
+    logits::T # output logits
     # kv cache
-    kvcache_layers::Vector{KVCache}
-  end
-  
-  RunState(c::ModelConfig, AT) where T = RunState(;
-    x              = AT(zeros(Float32, c.dim)),
-    xb             = AT(zeros(Float32, c.dim)),
-    xb2            = AT(zeros(Float32, c.dim)),
-    hb             = AT(zeros(Float32, c.hidden_dim)),
-    hb2            = AT(zeros(Float32, c.hidden_dim)),
-    q              = AT(zeros(Float32, c.dim)),
-    k              = AT(zeros(Float32, (c.dim ÷ c.n_heads) * c.n_kv_heads)),
-    v              = AT(zeros(Float32, (c.dim ÷ c.n_heads) * c.n_kv_heads)),
-    att            = AT(zeros(Float32, c.seq_len * c.n_heads)),
-    logits         = AT(zeros(Float32, c.vocab_size)),
-    kvcache_layers = [KVCache(c.dim ÷ c.n_heads, c.n_kv_heads, c.seq_len, AT) for _ in 1:c.n_layers],
-  )
-  get_run_state(model::LanguageModel) = begin
-    ARRAY_TYPE = typeof(model.weights.token_embedding_table)
-    RunState(model.config, ARRAY_TYPE.name.wrapper)
+    kvcache_layers::Vector{KVCache{T2}}
+end
+
+RunState(c::ModelConfig, backend) where T = RunState(;
+    x              = KernelAbstractions.zeros(backend, Float32, c.dim),
+    xb             = KernelAbstractions.zeros(backend, Float32, c.dim),
+    xb2            = KernelAbstractions.zeros(backend, Float32, c.dim),
+    hb             = KernelAbstractions.zeros(backend, Float32, c.hidden_dim),
+    hb2            = KernelAbstractions.zeros(backend, Float32, c.hidden_dim),
+    q              = KernelAbstractions.zeros(backend, Float32, c.dim),
+    k              = KernelAbstractions.zeros(backend, Float32, (c.dim ÷ c.n_heads) * c.n_kv_heads),
+    v              = KernelAbstractions.zeros(backend, Float32, (c.dim ÷ c.n_heads) * c.n_kv_heads),
+    att            = KernelAbstractions.zeros(backend, Float32, c.seq_len * c.n_heads),
+    logits         = KernelAbstractions.zeros(backend, Float32, c.vocab_size),
+    kvcache_layers = [KVCache(c.dim ÷ c.n_heads, c.n_kv_heads, c.seq_len, backend) for _ in 1:c.n_layers],
+)
+get_run_state(model::LanguageModel) = begin
+    backend = get_backend(model.weights.token_embedding_table)
+    RunState(model.config, backend)
 end
 
 @kernel function rmsnorm_kernel_optimized!(o, x, weight, length_x)

@@ -126,31 +126,31 @@ function read_gguf_tensor_info(file)
     return GGUFTensorInfo(; name, dimensions, typ, offset)
 end
 
-function TransformerLayerWeights(tensor_dict::Dict{String,Any}, layer_index::Int, AT)
+function TransformerLayerWeights(tensor_dict::Dict{String,Any}, layer_index::Int)
     if !haskey(tensor_dict, "blk.$(layer_index-1).attn_q.weight")
         error("missing blk.$(layer_index-1) weights")
     end
 
     return TransformerLayerWeights(;
-        rms_att_weight = AT(tensor_dict["blk.$(layer_index-1).attn_norm.weight"]),
-        rms_ffn_weight = AT(tensor_dict["blk.$(layer_index-1).ffn_norm.weight"]),
-        wq             = AT(tensor_dict["blk.$(layer_index-1).attn_q.weight"]),
-        wk             = AT(tensor_dict["blk.$(layer_index-1).attn_k.weight"]),
-        wv             = AT(tensor_dict["blk.$(layer_index-1).attn_v.weight"]),
-        wo             = AT(tensor_dict["blk.$(layer_index-1).attn_output.weight"]),
-        w1             = AT(tensor_dict["blk.$(layer_index-1).ffn_gate.weight"]),
-        w2             = AT(tensor_dict["blk.$(layer_index-1).ffn_down.weight"]),
-        w3             = AT(tensor_dict["blk.$(layer_index-1).ffn_up.weight"]),
+        rms_att_weight = tensor_dict["blk.$(layer_index-1).attn_norm.weight"],
+        rms_ffn_weight = tensor_dict["blk.$(layer_index-1).ffn_norm.weight"],
+        wq             = tensor_dict["blk.$(layer_index-1).attn_q.weight"],
+        wk             = tensor_dict["blk.$(layer_index-1).attn_k.weight"],
+        wv             = tensor_dict["blk.$(layer_index-1).attn_v.weight"],
+        wo             = tensor_dict["blk.$(layer_index-1).attn_output.weight"],
+        w1             = tensor_dict["blk.$(layer_index-1).ffn_gate.weight"],
+        w2             = tensor_dict["blk.$(layer_index-1).ffn_down.weight"],
+        w3             = tensor_dict["blk.$(layer_index-1).ffn_up.weight"],
     )
 end
 
-function TransformerWeights(tensor_dict::Dict{String,Any}, layer_count::Int, AT)
-    layers = TransformerLayerWeights[TransformerLayerWeights(tensor_dict, i, AT) for i in 1:layer_count]
+function TransformerWeights(tensor_dict::Dict{String,Any}, layer_count::Int)
+    layers = TransformerLayerWeights[TransformerLayerWeights(tensor_dict, i) for i in 1:layer_count]
 
     return TransformerWeights(;
-        token_embedding_table = AT(tensor_dict["token_embd.weight"]),
-        rms_final_weight      = AT(tensor_dict["output_norm.weight"]),
-        output_weight         = AT(tensor_dict["output.weight"]),
+        token_embedding_table = tensor_dict["token_embd.weight"],
+        rms_final_weight      = tensor_dict["output_norm.weight"],
+        output_weight         = tensor_dict["output.weight"],
         layers,
     )
 end
@@ -179,7 +179,7 @@ function _read_ggml_tensor(tensor_type::GGML_TYPE, size, file::IOStream)
     else
         error("tensor type $tensor_type not implemented")
     end
-    
+
     read!(file, tensor)
     return tensor
 end
@@ -211,12 +211,18 @@ function _read_ggml_tensor_mmap(tensor_type::GGML_TYPE, size, file::IOStream)
     return tensor
 end
 
-function read_ggml_tensor(tensor_type::GGML_TYPE, size, file::IOStream, mmap)
-    if mmap
-        return _read_ggml_tensor_mmap(tensor_type, size, file)
+function read_ggml_tensor(tensor_type::GGML_TYPE, size, file::IOStream, mmap, array_type)
+    tensor = if mmap
+        _read_ggml_tensor_mmap(tensor_type, size, file)
+    else
+        _read_ggml_tensor(tensor_type, size, file)
     end
 
-    return _read_ggml_tensor(tensor_type, size, file)
+    if typeof(tensor) isa array_type
+        return tensor
+    end
+
+    return array_type(tensor)
 end
 
 # this undoes whatever https://github.com/openai/gpt-2/blob/master/src/encoder.py does
@@ -235,7 +241,7 @@ function gpt2_decoder()
     return Dict(Char.(cs) .=> Char.(bs))
 end
 
-function load_gguf_model(filename::AbstractString; mmap=true, AT::Type{T}=Array) where {T <: AbstractArray}
+function load_gguf_model(filename::AbstractString; mmap=true, array_type::Type{T}=Array) where {T <: AbstractArray}
     header = nothing
     tensor_dict = nothing
 
@@ -251,7 +257,7 @@ function load_gguf_model(filename::AbstractString; mmap=true, AT::Type{T}=Array)
         # read tensors
         @showprogress desc="Loading model..." for tensor_info in tensor_info_list
             seek(file, pad_offset + tensor_info.offset)
-            tensor_dict[tensor_info.name] = read_ggml_tensor(tensor_info.typ, tensor_info.dimensions, file, mmap)
+            tensor_dict[tensor_info.name] = read_ggml_tensor(tensor_info.typ, tensor_info.dimensions, file, mmap, array_type)
         end
     end
 
@@ -311,7 +317,7 @@ function load_gguf_model(filename::AbstractString; mmap=true, AT::Type{T}=Array)
         rope_freq_base = get(metadata_kv, "llama.rope.freq_base", 10000.0f0),
     )
 
-    weights = TransformerWeights(tensor_dict, Int(header.metadata_kv["llama.block_count"]), AT)
+    weights = TransformerWeights(tensor_dict, Int(header.metadata_kv["llama.block_count"]))
 
     return LanguageModel(config, tokenizer, weights)
 end
