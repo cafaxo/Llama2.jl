@@ -1,5 +1,5 @@
 using KernelAbstractions
-using Llama2: block_q4_K, block_q5_K, block_q6_K, QK_K, extract_bytes, sum_blocks_ka, reinterpret_contiguous, _vecdot_hack
+using Llama2: block_q4_K, block_q5_K, block_q6_K, QK_K, reinterpret_contiguous, _vecdot_hack, block_sums_kernel_v2
 function matmul_v1!(
   y::AbstractVector{Float32},
   A::AbstractMatrix{T},
@@ -10,33 +10,7 @@ function matmul_v1!(
   return nothing
 end
 
-@kernel function block_sums_kernel_v2_forperf(@Const(x), sums)
-  i = @index(Global, Linear)
-  li = @index(Local, Linear)
-  N = @uniform @groupsize()[1]
-  
-  shared_mem = @localmem Float32 N
-  
-  @inbounds if i <= length(x)
-      shared_mem[li] = x[i]
-      @synchronize
-      
-      s = N ÷ 2
-      while s > 0
-          if li <= s
-              shared_mem[li] += shared_mem[li + s]
-          end
-          s ÷= 2
-          @synchronize
-      end
-      
-      if li == 1
-          block_id = (i - 1) ÷ N + 1
-          sums[block_id] = Float16(shared_mem[1])
-      end
-  end
-end
-# this simple solution is pretty much the same speed as the above LMEM solution.
+# this simple solution is pretty much the same speed as the block_sums_kernel_v2 solution.
 @kernel function block_sums_kernel_v1(@Const(x), sums, num_blocks, sum_size)
   block_id = @index(Global)
 
@@ -55,7 +29,7 @@ function block_sums_v1!(sums, x::AbstractVector{Float32}, block_size::Int=32)
   backend = KernelAbstractions.get_backend(x)
   # kernel! = block_sums_kernel_v1(backend, (block_size,))
   # kernel!(x, sums, num_blocks, block_size, ndrange=num_blocks)
-  kernel! = block_sums_kernel_v2_forperf(backend, (block_size,)) # we use v2 version because this way we have the same solution for speed comparison.
+  kernel! = block_sums_kernel_v2(backend, (block_size,)) # we use v2 version because this way we have the same solution for speed comparison.
   kernel!(x, sums, ndrange=length(x))
   return sums
 end

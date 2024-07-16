@@ -19,7 +19,7 @@ using Llama2: matmul!, dequantize!, rmsnorm!
 
 dequantize!(s.x, model.weights.token_embedding_table[:, token]) 
 rmsnorm!(s.xb, s.x, w.rms_att_weight)
-include("nonvecdot.v1.jl")
+include("kernels.v1.jl")
 
 #%%
 (rmsnorm_v1!(s.xb, s.x, w.rms_att_weight), syncKA(dev))

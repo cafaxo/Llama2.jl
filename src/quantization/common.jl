@@ -52,6 +52,7 @@ function dequantize(x::AbstractVector{<:Union{block_q4_K, block_q5_K, block_q6_K
     dequantize!(y, x)
     return y
 end
+
 # Not sure if correct, numerically weights were not the same with it:
 function dequantize(x::AbstractMatrix{<:Union{block_q4_K, block_q5_K, block_q6_K, block_q8_K}})
     y = zeros(Float16, size(x,1) * size(x,2) * QK_K)

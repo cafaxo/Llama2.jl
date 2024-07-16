@@ -36,6 +36,7 @@ Base.@propagate_inbounds function get_scale_min_k4(j::Int, q::AbstractVector{UIn
 
     return d, m
 end
+
 # for the CPU solution.
 function get_scale_min_k4(index::Int, scales::Vector{UInt8})
     scale = (scales[index] & 0xF) * 0.1f0  # Replace with actual scale factor

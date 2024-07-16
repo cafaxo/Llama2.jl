@@ -1,6 +1,7 @@
 using Boilerplate
 using Llama2: QK_K
 
+include("../benchmarks/archived.v1.jl")
 function matmul_cudajl!(
   y::CuVector{Float32},
   A::CuMatrix{T},
@@ -51,6 +52,7 @@ function to_block_f16_sums32_cuda(x::CuVector{Float32})
 
   return sums
 end
+
 
 function _vecdot_hack(scale, sums::CuVector, i, d_all)
   q8sums_offset = (i-1)*16
@@ -321,6 +323,7 @@ function vecdot_q4_cuda(A, idx, x, x_sums)
   end
   sumf
 end
+
 function vecdot_cuda!(y::CuVector{Float32}, A::CuMatrix{block_q5_K}, x, x_sums::CuVector{Float16})
   N = length(y)
 
@@ -331,6 +334,7 @@ function vecdot_cuda!(y::CuVector{Float32}, A::CuMatrix{block_q5_K}, x, x_sums::
 
   return y
 end
+
 function vecdot_q5_kernel(y, A, x, x_sums)
   idx = threadIdx().x + (blockIdx().x - 1) * blockDim().x
   
@@ -410,6 +414,7 @@ function vecdot_q5_cuda(A, idx, x, x_sums)
   end
   sumf
 end
+
 function vecdot_nonvectorized(x::AbstractArray{block_q6_K}, idx, orig::CuVector{Float16}, sums::CuVector{Float16})
   # @show length(sums)
   @assert size(x, 1) == length(orig) ÷ 256
@@ -559,6 +564,4 @@ function vecdot_nonvectorized(x::AbstractArray{block_q6_K}, idx, orig::CuVector{
 
   return sumf
 end
-@inline function extract_bytes(x::UInt32)
-  return (x & 0xff, (x >> 8) & 0xff, (x >> 16) & 0xff, (x >> 24) & 0xff)
-end
+
