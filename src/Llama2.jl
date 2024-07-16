@@ -8,6 +8,7 @@ using LoopVectorization
 using Random
 using Distributions
 using Mmap
+using KernelAbstractions
 
 export ModelConfig, CharTokenizer, LanguageModel
 export load_gguf_model, load_karpathy_model, encode, sample
@@ -21,10 +22,12 @@ include("quantization/q4.jl")
 include("quantization/q5.jl")
 include("quantization/q6.jl")
 include("quantization/q8.jl")
-include("quantization/vecdot.KA.jl")
+include("quantization/vecdot.jl")
 
 # inference
 include("tokenizer.jl")
+include("structs.jl")
+include("kernels.jl")
 include("inference.jl")
 
 # model loading

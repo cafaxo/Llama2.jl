@@ -5,10 +5,71 @@ function matmul_v1!(
   A::AbstractMatrix{T},
   x::AbstractVector{Float32},
 ) where {T<:Union{block_q4_K,block_q5_K,block_q6_K}}
-  x_sums = sum_blocks_ka(x, (T <: Union{block_q4_K,block_q5_K}) ? 32 : 16) # FIXME: preallocate this
+  x_sums = block_sums_v1(x, (T <: Union{block_q4_K,block_q5_K}) ? 32 : 16) # FIXME: preallocate this
   vecdot_ka_v1!(y, A, x, x_sums)
   return nothing
 end
+
+@kernel function block_sums_kernel_v2_forperf(@Const(x), sums)
+  i = @index(Global, Linear)
+  li = @index(Local, Linear)
+  N = @uniform @groupsize()[1]
+  
+  shared_mem = @localmem Float32 N
+  
+  @inbounds if i <= length(x)
+      shared_mem[li] = x[i]
+      @synchronize
+      
+      s = N ÷ 2
+      while s > 0
+          if li <= s
+              shared_mem[li] += shared_mem[li + s]
+          end
+          s ÷= 2
+          @synchronize
+      end
+      
+      if li == 1
+          block_id = (i - 1) ÷ N + 1
+          sums[block_id] = Float16(shared_mem[1])
+      end
+  end
+end
+# this simple solution is pretty much the same speed as the above LMEM solution.
+@kernel function block_sums_kernel_v1(@Const(x), sums, num_blocks, sum_size)
+  block_id = @index(Global)
+
+  if block_id <= num_blocks
+      sum = 0.0f0
+      start_idx = (block_id-1) * sum_size
+      for i in 1:sum_size
+          sum += x[start_idx + i]
+      end
+      sums[block_id] = sum
+  end
+end
+
+function block_sums_v1!(sums, x::AbstractVector{Float32}, block_size::Int=32)
+  num_blocks = cld(length(x), block_size)
+  backend = KernelAbstractions.get_backend(x)
+  # kernel! = block_sums_kernel_v1(backend, (block_size,))
+  # kernel!(x, sums, num_blocks, block_size, ndrange=num_blocks)
+  kernel! = block_sums_kernel_v2_forperf(backend, (block_size,)) # we use v2 version because this way we have the same solution for speed comparison.
+  kernel!(x, sums, ndrange=length(x))
+  return sums
+end
+
+function block_sums_v1(x::AbstractVector{Float32}, block_size::Int=32)
+  num_blocks = cld(length(x), block_size)
+  sums = KernelAbstractions.zeros(get_backend(x), Float16, num_blocks)  # FIXME: preallocate this, or fuse into the next kernel
+  # sums = similar(x, Float16, num_blocks)
+  block_sums_v1!(sums, x, block_size)
+
+  return sums
+end
+
+include("archived.v1.jl")
 
 function vecdot_ka_v1!(y::AbstractVector{Float32}, A::AbstractMatrix{block_q4_K}, x, x_sums::AbstractVector{Float16})
   N = length(y)

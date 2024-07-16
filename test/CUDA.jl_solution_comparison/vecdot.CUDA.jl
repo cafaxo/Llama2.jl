@@ -562,11 +562,3 @@ end
 @inline function extract_bytes(x::UInt32)
   return (x & 0xff, (x >> 8) & 0xff, (x >> 16) & 0xff, (x >> 24) & 0xff)
 end
-
-# unused but maybe for later.
-function dp4a!(a::Int32, b::Int32, c::Int32)
-  va = reinterpret(Vec{4,Int8}, a)
-  vb = reinterpret(Vec{4,Int8}, b)
-  c += va[0] * vb[0] + va[1] * vb[1] + va[2] * vb[2] + va[3] * vb[3]
-  nothing
-end

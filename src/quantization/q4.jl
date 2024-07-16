@@ -158,7 +158,24 @@ function quantize!(y::Vector{block_q4_K}, x::Vector{Float32})
     return y
 end
 
-using KernelAbstractions
+# CPU version remains unchanged
+function get_scale_min_k4(index::Int, scales::Vector{UInt8})
+    scale = (scales[index] & 0xF) * 0.1f0  # Replace with actual scale factor
+    min = (scales[index] >> 4) * 0.1f0     # Replace with actual min factor
+    return scale, min
+end
+
+Base.@propagate_inbounds function get_scale_min_k4(j::Int, q::NTuple{12, UInt8})
+    if j <= 4
+        d = q[j] & UInt8(63)
+        m = q[j + 4] & UInt8(63)
+    else
+        d = (q[j+4] & 0xF) | ((q[j-4] >> 6) << 4)
+        m = (q[j+4] >>  4) | ((q[j-0] >> 6) << 4)
+    end
+
+    return d, m
+end
 
 @kernel function dequantize_q4_kernel!(y, x, nb, QK_K)
     idx = @index(Global)
@@ -185,25 +202,6 @@ using KernelAbstractions
     end
 end
 
-Base.@propagate_inbounds function get_scale_min_k4(j::Int, q::AbstractVector{UInt8})
-    if j <= 4
-        d = q[j] & UInt8(63)
-        m = q[j + 4] & UInt8(63)
-    else
-        d = (q[j+4] & 0xF) | ((q[j-4] >> 6) << 4)
-        m = (q[j+4] >>  4) | ((q[j-0] >> 6) << 4)
-    end
-
-    return d, m
-end
-
-# CPU version remains unchanged
-function get_scale_min_k4(index::Int, scales::Vector{UInt8})
-    scale = (scales[index] & 0xF) * 0.1f0  # Replace with actual scale factor
-    min = (scales[index] >> 4) * 0.1f0     # Replace with actual min factor
-    return scale, min
-end
-
 function dequantize!(y::AbstractVector{T}, x::AbstractVector{block_q4_K}) where T <: Union{Float16, Float32}
     k = length(y)
     QK_K = 256  # Assuming QK_K is a known constant
@@ -214,16 +212,4 @@ function dequantize!(y::AbstractVector{T}, x::AbstractVector{block_q4_K}) where 
     kernel_q4(y, x, nb, QK_K, ndrange=nb)
 
     return y
-end
-
-Base.@propagate_inbounds function get_scale_min_k4(j::Int, q::NTuple{12, UInt8})
-    if j <= 4
-        d = q[j] & UInt8(63)
-        m = q[j + 4] & UInt8(63)
-    else
-        d = (q[j+4] & 0xF) | ((q[j-4] >> 6) << 4)
-        m = (q[j+4] >>  4) | ((q[j-0] >> 6) << 4)
-    end
-
-    return d, m
 end

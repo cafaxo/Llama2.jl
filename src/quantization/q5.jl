@@ -1,6 +1,4 @@
 # implementation based on: https://github.com/ggerganov/llama.cpp/blob/a55eb1bf0fa2fd84147bdfd384391e029d988253/ggml-sycl.cpp#L4340
-using KernelAbstractions
-
 @kernel function dequantize_q5_kernel!(y, x, nb)
     idx = @index(Global)
     if idx <= nb
