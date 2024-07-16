@@ -2,7 +2,7 @@ using Llama2
 
 using CUDA
 # Options from KA: CuArray, Array, ROCArray, oneArray, MtlArray
-model = load_gguf_model("/llms/gguf/Meta-Llama-3-8B.Q4_K_S.gguf", AT=CuArray);
+model = load_gguf_model("/llms/gguf/Meta-Llama-3-8B.Q4_K_S.gguf", array_type=CuArray);
 
 #%%
 # GPU sample

@@ -13,7 +13,6 @@ using KernelAbstractions
 export ModelConfig, CharTokenizer, LanguageModel
 export load_gguf_model, load_karpathy_model, encode, sample
 export train
-export to_cuda
 
 # quantization
 include("quantization/utils.jl")
@@ -26,8 +25,6 @@ include("quantization/vecdot.jl")
 
 # inference
 include("tokenizer.jl")
-include("structs.jl")
-include("kernels.jl")
 include("inference.jl")
 
 # model loading
