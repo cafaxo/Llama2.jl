@@ -1,5 +1,3 @@
-using KernelAbstractions
-
 @noinline Base.@assume_effects :total function fieldoffset_sym(::Type{T}, s::Symbol) where {T}
     for i in 1:fieldcount(T)
         if fieldname(T, i) == s

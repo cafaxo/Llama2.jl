@@ -158,13 +158,6 @@ function quantize!(y::Vector{block_q4_K}, x::Vector{Float32})
     return y
 end
 
-# CPU version remains unchanged
-function get_scale_min_k4(index::Int, scales::Vector{UInt8})
-    scale = (scales[index] & 0xF) * 0.1f0  # Replace with actual scale factor
-    min = (scales[index] >> 4) * 0.1f0     # Replace with actual min factor
-    return scale, min
-end
-
 Base.@propagate_inbounds function get_scale_min_k4(j::Int, q::NTuple{12, UInt8})
     if j <= 4
         d = q[j] & UInt8(63)
