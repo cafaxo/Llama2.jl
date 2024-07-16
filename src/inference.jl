@@ -152,7 +152,7 @@ include("kernels.KA.jl")
 
         att ./= sqrt(Float32(head_size))
 
-        softmax_for!(att, n_heads)
+        softmax_for!(att)
 
         xb = reshape(s.xb, head_size, n_heads)
 

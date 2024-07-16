@@ -1,10 +1,10 @@
 using KernelAbstractions
-using Llama2: block_q4_K, block_q5_K, QK_K, extract_bytes, sum_blocks_ka, reinterpret_contiguous, _vecdot_hack
+using Llama2: block_q4_K, block_q5_K, block_q6_K, QK_K, extract_bytes, sum_blocks_ka, reinterpret_contiguous, _vecdot_hack
 function matmul_v1!(
   y::AbstractVector{Float32},
   A::AbstractMatrix{T},
   x::AbstractVector{Float32},
-) where {T<:Union{block_q4_K,block_q5_K}}
+) where {T<:Union{block_q4_K,block_q5_K,block_q6_K}}
   x_sums = sum_blocks_ka(x, (T <: Union{block_q4_K,block_q5_K}) ? 32 : 16) # FIXME: preallocate this
   vecdot_ka_v1!(y, A, x, x_sums)
   return nothing

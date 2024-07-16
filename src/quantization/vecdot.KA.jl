@@ -7,11 +7,13 @@ function matmul!(
     A::AbstractMatrix{T},
     x::AbstractVector{Float32},
 ) where {T<:Union{block_q4_K,block_q5_K,block_q6_K}}
-    if T <: Union{block_q4_K,block_q5_K}
-        x_sums = to_block_f16_sums32_ka(x) # FIXME: preallocate this
-    else # block_q6_K
-        x_sums = to_block_f16_sums16_ka(x) # FIXME: preallocate this
-    end
+    # if T <: Union{block_q4_K,block_q5_K}
+    #     x_sums = to_block_f16_sums32_ka(x) # FIXME: preallocate this
+    # else # block_q6_K
+    #     x_sums = to_block_f16_sums16_ka(x) # FIXME: preallocate this
+    # end
+    x_sums = sum_blocks_ka(x, (T <: Union{block_q4_K,block_q5_K}) ? 32 : 16) # FIXME: preallocate this
+
     vecdot_ka!(y, A, x, x_sums)
     return nothing
 end
@@ -65,7 +67,7 @@ end
 function vecdot_ka!(y::AbstractVector{Float32}, A::AbstractMatrix{block_q6_K}, x, x_sums::AbstractVector{Float16})
     N = length(y)
 
-    kernel! = vecdot_q6_kernel!(KernelAbstractions.get_backend(y))
+    kernel! = vecdot_q6_kernel!(KernelAbstractions.get_backend(y), 16)
     kernel!(y, A, x, x_sums, ndrange=N)
 end
 
@@ -79,146 +81,96 @@ end
 
 @inline function vecdot_q6_ka(A, idx, x, x_sums)
     nb = size(A, 1)
+    sumf = zero(Float32)
 
-   sumf = zero(Float32)
+    @inbounds for i in 1:nb # could be optimized with localmem
+        block = A[i, idx]
+        d_all = block.d
+        scale = block.scales
+        qh = block.qh
+        q6 = block.ql
+        
+        isum_mins = _vecdot_hack(scale, x_sums, i, d_all)
+        isum = zero(Float32)
+        
+        scale_offset = 0
+        qh_offset = 0
+        q6_offset = 0
+        q8_offset = (i-1) * 256
 
-   for i in 1:nb
-       d_all = A[i, idx].d
-       scale = A[i, idx].scales
-       
-       isum_mins = _vecdot_hack(scale, x_sums, i, d_all)
-       # @show isum_mins
+        @unroll for j in 1:(256 ÷ 128)
+            # First half (quarters 1 and 2)
+            s = (zero(Float32), zero(Float32), zero(Float32), zero(Float32))
+            @fastmath @unroll for k in 1:16
+                qhbits0 = qh[qh_offset + k]
+                qhbits1 = qh[qh_offset + 16 + k]
+                
+                q6h0 = (qhbits0 & 0x03) << 4
+                q6h1 = (qhbits1 & 0x03) << 4
+                q6h2 = ((qhbits0 >> 2) & 0x03) << 4
+                q6h3 = ((qhbits1 >> 2) & 0x03) << 4
+                
+                q6bits0 = q6[q6_offset + k]
+                q6bits1 = q6[q6_offset + 16 + k]
+                q6bits2 = q6[q6_offset + 2*16 + k]
+                q6bits3 = q6[q6_offset + 3*16 + k]
+                
+                q6bytes0 = d_all * reinterpret(Int8, (q6bits0 & 0x0f) | q6h0)
+                q6bytes1 = d_all * reinterpret(Int8, (q6bits1 & 0x0f) | q6h1)
+                q6bytes2 = d_all * reinterpret(Int8, (q6bits2 & 0x0f) | q6h2)
+                q6bytes3 = d_all * reinterpret(Int8, (q6bits3 & 0x0f) | q6h3)
+                
+                s = (s[1] + q6bytes0 * x[q8_offset + k],
+                     s[2] + q6bytes1 * x[q8_offset + 16 + k],
+                     s[3] + q6bytes2 * x[q8_offset + 32 + k],
+                     s[4] + q6bytes3 * x[q8_offset + 48 + k])
+            end
+            
+            isum += s[1] * scale[scale_offset + 1] + s[2] * scale[scale_offset + 2]
+            isum += s[3] * scale[scale_offset + 3] + s[4] * scale[scale_offset + 4]
+            scale_offset += 4
+            q8_offset += 64
 
-       isum = zero(Float32)
-       
-       qh = A[i, idx].qh
-       q6 = A[i, idx].ql
-       scale_offset = 0
-       qh_offset = 0
-       q6_offset = 0
-       q8_offset = (i-1) * 256
+            # Second half (quarters 3 and 4)
+            s = (zero(Float32), zero(Float32), zero(Float32), zero(Float32))
+            @fastmath @unroll for k in 1:16
+                qhbits0 = qh[qh_offset + k]
+                qhbits1 = qh[qh_offset + 16 + k]
+                
+                q6h0 = ((qhbits0 >> 4) & 0x03) << 4
+                q6h1 = ((qhbits1 >> 4) & 0x03) << 4
+                q6h2 = ((qhbits0 >> 6) & 0x03) << 4
+                q6h3 = ((qhbits1 >> 6) & 0x03) << 4
+                
+                q6bits0 = q6[q6_offset + k]
+                q6bits1 = q6[q6_offset + 16 + k]
+                q6bits2 = q6[q6_offset + 2*16 + k]
+                q6bits3 = q6[q6_offset + 3*16 + k]
+                
+                q6bytes0 = d_all * reinterpret(Int8, (q6bits0 >> 4) | q6h0)
+                q6bytes1 = d_all * reinterpret(Int8, (q6bits1 >> 4) | q6h1)
+                q6bytes2 = d_all * reinterpret(Int8, (q6bits2 >> 4) | q6h2)
+                q6bytes3 = d_all * reinterpret(Int8, (q6bits3 >> 4) | q6h3)
+                
+                s = (s[1] + q6bytes0 * x[q8_offset + k],
+                     s[2] + q6bytes1 * x[q8_offset + 16 + k],
+                     s[3] + q6bytes2 * x[q8_offset + 32 + k],
+                     s[4] + q6bytes3 * x[q8_offset + 48 + k])
+            end
+            
+            isum += s[1] * scale[scale_offset + 1] + s[2] * scale[scale_offset + 2]
+            isum += s[3] * scale[scale_offset + 3] + s[4] * scale[scale_offset + 4]
+            scale_offset += 4
+            q8_offset += 64
 
-       for j in 1:(256 ÷ 128)
-           s1 = zero(Float32)
+            qh_offset += 32
+            q6_offset += 64
+        end
 
-           @fastmath @inbounds for k in 1:16
-               qhbits0 = qh[qh_offset + k]
-               q6h0 = (qhbits0 & 0x03) << 4
-               q6bits0 = q6[q6_offset + k]
-               q6bytes0 = d_all * reinterpret(Int8, (q6bits0 & 0x0f) | q6h0)
-               
-               s1 += q6bytes0 * x[q8_offset + k]
-           end
+        sumf += isum - isum_mins
+    end
 
-           q8_offset += 16  # Adjusted offset step size
-           s2 = zero(Float32)
-
-           @fastmath @inbounds for k in 1:16
-               qhbits1 = qh[qh_offset + 16 + k]
-               q6h1 = (qhbits1 & 0x03) << 4
-               q6bits1 = q6[q6_offset + 16 + k]
-               q6bytes1 = d_all * reinterpret(Int8, (q6bits1 & 0x0f) | q6h1)
-
-               s2 += q6bytes1 * x[q8_offset + k]
-               # i<3 && j<2 && k>14&& @show q6bytes1, s2
-           end
-
-           isum += s1 * scale[scale_offset + 1] + s2 * scale[scale_offset + 2]
-           scale_offset += 2
-           q8_offset += 16
-
-           s1 = zero(Float32)
-
-           @fastmath @inbounds for k in 1:16
-               qhbits0 = qh[qh_offset + k]
-               q6h2 = ((qhbits0 >> 2) & 0x03) << 4
-               q6bits2 = q6[q6_offset + 2*16 + k]
-               q6bytes2 = d_all * reinterpret(Int8, (q6bits2 & 0x0f) | q6h2)
-
-               s1 += q6bytes2 * x[q8_offset + k]
-           end
-
-           q8_offset += 16
-           s2 = zero(Float32)
-
-           @fastmath @inbounds for k in 1:16
-               qhbits1 = qh[qh_offset + 16 + k]
-               q6h3 = ((qhbits1 >> 2) & 0x03) << 4
-               q6bits3 = q6[q6_offset + 3*16 + k]
-               q6bytes3 = d_all * reinterpret(Int8, (q6bits3 & 0x0f) | q6h3)
-
-               s2 += q6bytes3 * x[q8_offset + k]
-           end
-
-           isum += s1 * scale[scale_offset + 1] + s2 * scale[scale_offset + 2]
-           # i<3 &&@show isum, s1, s2
-
-           scale_offset += 2
-           q8_offset += 16
-
-           s1 = zero(Float32)
-
-           @fastmath @inbounds for k in 1:16
-               qhbits0 = qh[qh_offset + k]
-               q6h0 = ((qhbits0 >> 4) & 0x03) << 4
-               q6bits0 = q6[q6_offset + k]
-               q6bytes0 = d_all * reinterpret(Int8, (q6bits0 >> 4) | q6h0)
-
-               s1 += q6bytes0 * x[q8_offset + k]
-           end
-
-           q8_offset += 16
-           s2 = zero(Float32)
-
-           @fastmath @inbounds for k in 1:16
-               qhbits1 = qh[qh_offset + 16 + k]
-               q6h1 = ((qhbits1 >> 4) & 0x03) << 4
-               q6bits1 = q6[q6_offset + 16 + k]
-               q6bytes1 = d_all * reinterpret(Int8, (q6bits1 >> 4) | q6h1)
-
-               s2 += q6bytes1 * x[q8_offset + k]
-               # i<3 && j<2 && k>14&& @show q6bytes1, s2
-           end
-
-           isum += s1 * scale[scale_offset + 1] + s2 * scale[scale_offset + 2]
-           scale_offset += 2
-           q8_offset += 16
-
-           s1 = zero(Float32)
-
-           @fastmath @inbounds for k in 1:16
-               qhbits0 = qh[qh_offset + k]
-               q6h2 = ((qhbits0 >> 6) & 0x03) << 4
-               q6bits2 = q6[q6_offset + 2*16 + k]
-               q6bytes2 = d_all * reinterpret(Int8, (q6bits2 >> 4) | q6h2)
-
-               s1 += q6bytes2 * x[q8_offset + k]
-           end
-
-           q8_offset += 16
-           s2 = zero(Float32)
-
-           @fastmath @inbounds for k in 1:16
-               qhbits1 = qh[qh_offset + 16 + k]
-               q6h3 = ((qhbits1 >> 6) & 0x03) << 4
-               q6bits3 = q6[q6_offset + 3*16 + k]
-               q6bytes3 = d_all * reinterpret(Int8, (q6bits3 >> 4) | q6h3)
-
-               s2 += q6bytes3 * x[q8_offset + k]
-           end
-
-           isum += s1 * scale[scale_offset + 1] + s2 * scale[scale_offset + 2]
-
-           scale_offset += 2
-           qh_offset += 32
-           q6_offset += 64
-           q8_offset += 16
-       end
-
-       sumf += isum - isum_mins
-   end
-
-   return sumf
+    return sumf
 end
 
 function vecdot_ka!(y::AbstractVector{Float32}, A::AbstractMatrix{block_q4_K}, x, x_sums::AbstractVector{Float16})
@@ -247,7 +199,7 @@ end
     kmask3 = 0x03030303
   
     sumf = zero(Float32)
-    @inbounds for i in 1:nb
+    @inbounds for i in 1:nb # could be optimized with localmem
         block = A[i, idx]
         d = Float32(block.d)
         dmin = Float32(block.dmin)
@@ -322,7 +274,7 @@ end
     nb = size(A, 1)
     sumf = zero(Float32)
 
-    @inbounds for i in 1:nb
+    @inbounds for i in 1:nb # could be optimized with localmem
         block = A[i, idx]
         d = Float32(block.d)
         dmin = Float32(block.dmin)
