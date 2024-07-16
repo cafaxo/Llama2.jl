@@ -145,11 +145,7 @@ function TransformerLayerWeights(tensor_dict::Dict{String,Any}, layer_index::Int
 end
 
 function TransformerWeights(tensor_dict::Dict{String,Any}, layer_count::Int)
-    layers = [TransformerLayerWeights(tensor_dict, 1)]
-
-    for i in 2:layer_count
-        push!(layers, TransformerLayerWeights(tensor_dict, i))
-    end
+    layers = TransformerLayerWeights[TransformerLayerWeights(tensor_dict, i) for i in 1:layer_count]
 
     return TransformerWeights(;
         token_embedding_table = tensor_dict["token_embd.weight"],
@@ -215,12 +211,18 @@ function _read_ggml_tensor_mmap(tensor_type::GGML_TYPE, size, file::IOStream)
     return tensor
 end
 
-function read_ggml_tensor(tensor_type::GGML_TYPE, size, file::IOStream, mmap)
-    if mmap
-        return _read_ggml_tensor_mmap(tensor_type, size, file)
+function read_ggml_tensor(tensor_type::GGML_TYPE, size, file::IOStream, mmap, array_type)
+    tensor = if mmap
+        _read_ggml_tensor_mmap(tensor_type, size, file)
+    else
+        _read_ggml_tensor(tensor_type, size, file)
     end
 
-    return _read_ggml_tensor(tensor_type, size, file)
+    if typeof(tensor) isa array_type
+        return tensor
+    end
+
+    return array_type(tensor)
 end
 
 # this undoes whatever https://github.com/openai/gpt-2/blob/master/src/encoder.py does
@@ -239,7 +241,7 @@ function gpt2_decoder()
     return Dict(Char.(cs) .=> Char.(bs))
 end
 
-function load_gguf_model(filename::AbstractString; mmap=true)
+function load_gguf_model(filename::AbstractString; mmap=true, array_type::Type{T}=Array) where {T <: AbstractArray}
     header = nothing
     tensor_dict = nothing
 
@@ -255,7 +257,7 @@ function load_gguf_model(filename::AbstractString; mmap=true)
         # read tensors
         @showprogress desc="Loading model..." for tensor_info in tensor_info_list
             seek(file, pad_offset + tensor_info.offset)
-            tensor_dict[tensor_info.name] = read_ggml_tensor(tensor_info.typ, tensor_info.dimensions, file, mmap)
+            tensor_dict[tensor_info.name] = read_ggml_tensor(tensor_info.typ, tensor_info.dimensions, file, mmap, array_type)
         end
     end
 

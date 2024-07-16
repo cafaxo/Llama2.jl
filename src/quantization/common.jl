@@ -46,7 +46,7 @@ function dequantize!(y::AbstractVector{Float32}, x::AbstractVector{Float32})
     return y
 end
 
-function dequantize(x::AbstractVector{<:Union{block_q4_K,block_q6_K,block_q8_K}})
+function dequantize(x::AbstractVector{<:Union{block_q4_K,block_q5_K,block_q6_K,block_q8_K}})
     y = zeros(Float32, length(x)*QK_K)
     dequantize!(y, x)
     return y

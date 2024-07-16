@@ -90,18 +90,15 @@ function quantize!(y::Vector{block_q6_K}, x::Vector{Float32})
     return y
 end
 
-function dequantize!(y::AbstractVector{Float32}, x::AbstractVector{block_q6_K})
-    k = length(y)
-    @assert k % QK_K == 0
-    nb = k ÷ QK_K
+@kernel function dequantize_q6_kernel!(y, @Const(x), @Const(nb), @Const(QK_K))
+    idx = @index(Global)
+    if idx <= nb
+        ql = x[idx].ql
+        qh = x[idx].qh
+        scales = x[idx].scales
+        d = Float32(x[idx].d)
 
-    @inbounds for i in 1:nb
-        ql = MutableField(UInt8, x, i, :ql)
-        qh = MutableField(UInt8, x, i, :qh)
-        scales = MutableField(Int8, x, i, :scales)
-        d = Float32(MutableField(Float16, x, i, :d)[1])
-
-        for n in 1:(QK_K÷128)
+        for n in 1:2 # QK_K ÷ 128 = 2 
             for l in 1:32
                 q1 = reinterpret(Int8, (ql[64*(n-1) + l +  0] & 0xF) | (((qh[32*(n-1) + l] >> 0) & 0x3) << 4)) - 32
                 q2 = reinterpret(Int8, (ql[64*(n-1) + l + 32] & 0xF) | (((qh[32*(n-1) + l] >> 2) & 0x3) << 4)) - 32
@@ -117,6 +114,16 @@ function dequantize!(y::AbstractVector{Float32}, x::AbstractVector{block_q6_K})
             end
         end
     end
+end
+
+function dequantize!(y::AbstractVector{T}, x::AbstractVector{block_q6_K}) where T <: Union{Float16, Float32}
+    k = length(y)
+    QK_K = 256  # Assuming QK_K is a known constant
+    @assert k % QK_K == 0
+    nb = k ÷ QK_K
+
+    kernel! = dequantize_q6_kernel!(KernelAbstractions.get_backend(y))
+    kernel!(y, x, nb, QK_K, ndrange=nb)
 
     return y
 end
