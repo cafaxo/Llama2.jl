@@ -69,6 +69,8 @@ function read_gguf_metadata_value(file, value_type)
         array_value_type = GGUF_METADATA_VALUE_TYPE(read(file, UInt32))
         array_len = read(file, UInt64)
         return [read_gguf_metadata_value(file, array_value_type) for _ in 1:array_len]
+    elseif value_type == GGUF_METADATA_VALUE_TYPE_BOOL
+        return read(file, Bool)
     end
 
     error("reading metadata value of type $value_type is not implemented yet")
@@ -124,39 +126,6 @@ function read_gguf_tensor_info(file)
     offset = read(file, UInt64)
 
     return GGUFTensorInfo(; name, dimensions, typ, offset)
-end
-
-function TransformerLayerWeights(tensor_dict::Dict{String,Any}, layer_index::Int)
-    if !haskey(tensor_dict, "blk.$(layer_index-1).attn_q.weight")
-        error("missing blk.$(layer_index-1) weights")
-    end
-
-    return TransformerLayerWeights(;
-        rms_att_weight = tensor_dict["blk.$(layer_index-1).attn_norm.weight"],
-        rms_ffn_weight = tensor_dict["blk.$(layer_index-1).ffn_norm.weight"],
-        wq             = tensor_dict["blk.$(layer_index-1).attn_q.weight"],
-        wk             = tensor_dict["blk.$(layer_index-1).attn_k.weight"],
-        wv             = tensor_dict["blk.$(layer_index-1).attn_v.weight"],
-        wo             = tensor_dict["blk.$(layer_index-1).attn_output.weight"],
-        w1             = tensor_dict["blk.$(layer_index-1).ffn_gate.weight"],
-        w2             = tensor_dict["blk.$(layer_index-1).ffn_down.weight"],
-        w3             = tensor_dict["blk.$(layer_index-1).ffn_up.weight"],
-    )
-end
-
-function TransformerWeights(tensor_dict::Dict{String,Any}, layer_count::Int)
-    layers = [TransformerLayerWeights(tensor_dict, 1)]
-
-    for i in 2:layer_count
-        push!(layers, TransformerLayerWeights(tensor_dict, i))
-    end
-
-    return TransformerWeights(;
-        token_embedding_table = tensor_dict["token_embd.weight"],
-        rms_final_weight      = tensor_dict["output_norm.weight"],
-        output_weight         = tensor_dict["output.weight"],
-        layers,
-    )
 end
 
 function align_offset(offset, alignment)
@@ -239,6 +208,112 @@ function gpt2_decoder()
     return Dict(Char.(cs) .=> Char.(bs))
 end
 
+function build_llama_weights_layer(tensor_dict::Dict{String,Any}, layer_index::Int)
+    if !haskey(tensor_dict, "blk.$(layer_index-1).attn_q.weight")
+        error("missing blk.$(layer_index-1) weights")
+    end
+
+    return TransformerLayerWeights(;
+        rms_att_weight = tensor_dict["blk.$(layer_index-1).attn_norm.weight"],
+        rms_ffn_weight = tensor_dict["blk.$(layer_index-1).ffn_norm.weight"],
+        wq             = tensor_dict["blk.$(layer_index-1).attn_q.weight"],
+        wk             = tensor_dict["blk.$(layer_index-1).attn_k.weight"],
+        wv             = tensor_dict["blk.$(layer_index-1).attn_v.weight"],
+        wo             = tensor_dict["blk.$(layer_index-1).attn_output.weight"],
+        w1             = tensor_dict["blk.$(layer_index-1).ffn_gate.weight"],
+        w2             = tensor_dict["blk.$(layer_index-1).ffn_down.weight"],
+        w3             = tensor_dict["blk.$(layer_index-1).ffn_up.weight"],
+    )
+end
+
+function build_llama(metadata_kv, tensor_dict, vocab_size)
+    config = ModelConfig(;
+        dim            = metadata_kv["llama.embedding_length"],
+        hidden_dim     = metadata_kv["llama.feed_forward_length"],
+        n_layers       = metadata_kv["llama.block_count"],
+        n_heads        = metadata_kv["llama.attention.head_count"],
+        n_kv_heads     = metadata_kv["llama.attention.head_count_kv"],
+        vocab_size,
+        seq_len        = 512, # metadata_kv["llama.context_length"],
+        rope_freq_base = get(metadata_kv, "llama.rope.freq_base", 10000.0f0),
+        rope_is_neox   = false,
+    )
+
+    layer_count = Int(metadata_kv["llama.block_count"])
+    layers = TransformerLayerWeights[build_llama_weights_layer(tensor_dict, i) for i in 1:layer_count]
+
+    weights = TransformerWeights(;
+        token_embedding_table = tensor_dict["token_embd.weight"],
+        rms_final_weight      = tensor_dict["output_norm.weight"],
+        output_weight         = tensor_dict["output.weight"],
+        layers,
+    )
+
+    return config, weights
+end
+
+function build_phi3_weights_layer(tensor_dict::Dict{String,Any}, layer_index::Int)
+    if !haskey(tensor_dict, "blk.$(layer_index-1).attn_qkv.weight")
+        error("missing blk.$(layer_index-1) weights")
+    end
+
+    wqkv = tensor_dict["blk.$(layer_index-1).attn_qkv.weight"]
+    n = size(wqkv, 2) ÷ 3
+    @assert n == 3072
+
+    wq = view(wqkv, :, 0*n+1:1*n)
+    wk = view(wqkv, :, 1*n+1:2*n)
+    wv = view(wqkv, :, 2*n+1:3*n)
+
+    # these are combined in phi3 for some reason
+    gate_and_up = tensor_dict["blk.$(layer_index-1).ffn_up.weight"]
+    n = size(gate_and_up, 2) ÷ 2
+
+    # ffn_gate
+    w1 = view(gate_and_up, :, 0*n+1:1*n)
+
+    # ffn_up
+    w3 = view(gate_and_up, :, 1*n+1:2*n)
+
+    return TransformerLayerWeights(;
+        rms_att_weight = tensor_dict["blk.$(layer_index-1).attn_norm.weight"],
+        rms_ffn_weight = tensor_dict["blk.$(layer_index-1).ffn_norm.weight"],
+        wq,
+        wk,
+        wv,
+        wo             = tensor_dict["blk.$(layer_index-1).attn_output.weight"],
+        w1,
+        w2             = tensor_dict["blk.$(layer_index-1).ffn_down.weight"],
+        w3,
+    )
+end
+
+function build_phi3(metadata_kv, tensor_dict, vocab_size)
+    config = ModelConfig(;
+        dim            = metadata_kv["phi3.embedding_length"],
+        hidden_dim     = metadata_kv["phi3.feed_forward_length"],
+        n_layers       = metadata_kv["phi3.block_count"],
+        n_heads        = metadata_kv["phi3.attention.head_count"],
+        n_kv_heads     = metadata_kv["phi3.attention.head_count_kv"],
+        vocab_size,
+        seq_len        = 512, # metadata_kv["phi3.context_length"],
+        rope_freq_base = get(metadata_kv, "phi3.rope.freq_base", 10000.0f0),
+        rope_is_neox   = true,
+    )
+
+    layer_count = Int(metadata_kv["phi3.block_count"])
+    layers = TransformerLayerWeights[build_phi3_weights_layer(tensor_dict, i) for i in 1:layer_count]
+
+    weights = TransformerWeights(;
+        token_embedding_table = tensor_dict["token_embd.weight"],
+        rms_final_weight      = tensor_dict["output_norm.weight"],
+        output_weight         = tensor_dict["output.weight"],
+        layers,
+    )
+
+    return config, weights
+end
+
 function load_gguf_model(filename::AbstractString; mmap=true)
     header = nothing
     tensor_dict = nothing
@@ -304,18 +379,16 @@ function load_gguf_model(filename::AbstractString; mmap=true)
         metadata_kv["tokenizer.ggml.eos_token_id"] + 1,
     )
 
-    config = ModelConfig(;
-        dim            = metadata_kv["llama.embedding_length"],
-        hidden_dim     = metadata_kv["llama.feed_forward_length"],
-        n_layers       = metadata_kv["llama.block_count"],
-        n_heads        = metadata_kv["llama.attention.head_count"],
-        n_kv_heads     = metadata_kv["llama.attention.head_count_kv"],
-        vocab_size     = length(id_to_token),
-        seq_len        = 512, # metadata_kv["llama.context_length"],
-        rope_freq_base = get(metadata_kv, "llama.rope.freq_base", 10000.0f0),
-    )
+    vocab_size = length(id_to_token)
+    model_architecture = metadata_kv["general.architecture"]
 
-    weights = TransformerWeights(tensor_dict, Int(header.metadata_kv["llama.block_count"]))
+    if model_architecture == "llama"
+        config, weights = build_llama(metadata_kv, tensor_dict, vocab_size)
+    elseif model_architecture == "phi3"
+        config, weights = build_phi3(metadata_kv, tensor_dict, vocab_size)
+    else
+        error("unsupported model architecture: $(model_architecture)")
+    end
 
     return LanguageModel(config, tokenizer, weights)
 end

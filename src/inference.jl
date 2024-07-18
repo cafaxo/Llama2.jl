@@ -7,6 +7,7 @@
     vocab_size::Int         # vocabulary size, usually 256 (byte-level)
     seq_len::Int            # max sequence length
     rope_freq_base::Float32
+    rope_is_neox::Bool
 end
 
 function Base.show(io::IO, mime::MIME"text/plain", config::ModelConfig)
@@ -19,6 +20,7 @@ function Base.show(io::IO, mime::MIME"text/plain", config::ModelConfig)
     println(io, "  vocab_size     = ", config.vocab_size, ",")
     println(io, "  seq_len        = ", config.seq_len, ",")
     println(io, "  rope_freq_base = ", config.rope_freq_base, ",")
+    println(io, "  rope_is_neox   = ", config.rope_is_neox, ",")
     print(io, ")")
 end
 
@@ -27,22 +29,22 @@ end
     rms_att_weight::Vector{Float32} # (dim,)
     rms_ffn_weight::Vector{Float32} # (dim,)
     # weights for matmuls
-    wq::Matrix # (dim, dim)
-    wk::Matrix # (dim, dim)
-    wv::Matrix # (dim, dim)
-    wo::Matrix # (dim, dim)
+    wq::AbstractMatrix # (dim, dim)
+    wk::AbstractMatrix # (dim, dim)
+    wv::AbstractMatrix # (dim, dim)
+    wo::AbstractMatrix # (dim, dim)
     # weights for ffn
-    w1::Matrix # (dim, hidden_dim)
-    w2::Matrix # (hidden_dim, dim)
-    w3::Matrix # (dim, hidden_dim)
+    w1::AbstractMatrix # (dim, hidden_dim)
+    w2::AbstractMatrix # (hidden_dim, dim)
+    w3::AbstractMatrix # (dim, hidden_dim)
 end
 
 @kwdef struct TransformerWeights
-    token_embedding_table::Matrix # (dim, vocab_size)
+    token_embedding_table::AbstractMatrix # (dim, vocab_size)
     layers::Vector{TransformerLayerWeights}
     # final rmsnorm
     rms_final_weight::Vector{Float32} # (dim,)
-    output_weight::Matrix # (dim, vocab_size)
+    output_weight::AbstractMatrix # (dim, vocab_size)
 end
 
 struct LanguageModel{TOK<:Tokenizer}
@@ -100,14 +102,14 @@ RunState(c::ModelConfig) = RunState(;
 function rmsnorm!(o, x, weight)
     ss = dot(x, x)
     ss /= length(x)
-    ss += 1f-6
+    ss += 1f-5
     ss = 1f0 / sqrt(ss)
     # normalize and scale
     o .= weight .* (ss .* x)
     return nothing
 end
 
-function rope!(x::AbstractMatrix{Float32}, pos::Int, config::ModelConfig)
+function rope_normal!(x::AbstractMatrix{Float32}, pos::Int, config::ModelConfig)
     x = reinterpret(ComplexF32, x)
     head_size_div2, n_heads = size(x)
 
@@ -123,6 +125,42 @@ function rope!(x::AbstractMatrix{Float32}, pos::Int, config::ModelConfig)
             x[i, head] *= cis(theta)
             theta *= theta_scale
         end
+    end
+
+    return nothing
+end
+
+function rope_neox!(x::AbstractMatrix{Float32}, pos::Int, config::ModelConfig)
+    head_size, n_heads = size(x)
+    head_size_div2 = head_size ÷ 2
+
+    freq_base = config.rope_freq_base
+    freq_scale = 1.0f0
+
+    theta_scale = freq_base ^ (-inv(Float32(head_size_div2)))
+
+    @inbounds for head in 1:n_heads
+        theta = freq_scale * (pos - 1)
+
+        for i in 1:head_size_div2
+            z = complex(x[i, head], x[head_size_div2+i, head])
+            z *= cis(theta)
+
+            x[i, head] = real(z)
+            x[head_size_div2+i, head] = imag(z)
+
+            theta *= theta_scale
+        end
+    end
+
+    return nothing
+end
+
+function rope!(x::AbstractMatrix{Float32}, pos::Int, config::ModelConfig)
+    if config.rope_is_neox
+        rope_neox!(x, pos, config)
+    else
+        rope_normal!(x, pos, config)
     end
 
     return nothing

@@ -7,6 +7,7 @@ read_karpathy_config(f::IOStream) = ModelConfig(
     read(f, Int32),
     read(f, Int32),
     10000.0f0,
+    false,
 )
 
 TransformerLayerWeights(p::ModelConfig) = TransformerLayerWeights(;

@@ -12,10 +12,10 @@ pkg> add https://github.com/cafaxo/Llama2.jl
 ## Usage
 
 We currently support:
-- A subset of the GGUF format
+- GGUF models: Llama 2, Llama 3, and Phi-3 (not all quantization variants may work)
 - Andrej Karpathy's llama2.c format
 
-Experimental Llama 3 support is available:
+For example, here is some output from Llama 3:
 
 ```julia
 julia> using Llama2
@@ -34,7 +34,7 @@ ModelConfig(
 ))
 
 julia> sample(model, "The Julia programming language is"; temperature=0.0f0)
- The Julia programming language is a high-level, high-performance dynamic language for technical computing, with syntax that is familiar to users of other technical computing environments. It provides a sophisticated compiler, distributed parallel execution, numerical accuracy, and MATLABÂ®- and R-compatibility. It is open-source and available on 32- and 64-bit x86-based operating systems (Windows, Linux, and Mac OS X). Julia is sponsored by the Julia Computing Inc. company.
+ The Julia programming language is a high-level, high-performance dynamic language for technical computing. The language's feature set, based on modern application development platforms, includes support for metaprogramming, type declarations, multiple dispatch, and parallel computing. It also provides a sophisticated ecosystem of tools, libraries, and toolchains all accessible from the Julia REPL. Julia is an open-source project and is released under the MIT license.
 ```
 
 Andrej Karpathy's llama2.c models can be found at https://huggingface.co/karpathy/tinyllamas.
