@@ -36,6 +36,7 @@ ModelConfig(
 julia> sample(model, "The Julia programming language is"; temperature=0.0f0)
  The Julia programming language is a high-level, high-performance dynamic language for technical computing. The language's feature set, based on modern application development platforms, includes support for metaprogramming, type declarations, multiple dispatch, and parallel computing. It also provides a sophisticated ecosystem of tools, libraries, and toolchains all accessible from the Julia REPL. Julia is an open-source project and is released under the MIT license.
 ```
+The GGuf model from the example above is [here](https://huggingface.co/QuantFactory/Meta-Llama-3-8B-GGUF/blob/main/Meta-Llama-3-8B.Q4_K_S.gguf).
 
 Andrej Karpathy's llama2.c models can be found at https://huggingface.co/karpathy/tinyllamas.
 With these models, the [tokenizer.bin](https://github.com/karpathy/llama2.c/raw/b4bb47bb7baf0a5fb98a131d80b4e1a84ad72597/tokenizer.bin) file is also required.
